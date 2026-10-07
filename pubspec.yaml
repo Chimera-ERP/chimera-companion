@@ -1,0 +1,27 @@
+name: chimera_companion
+description: "Local hardware companion for Chimera ERP and POS."
+publish_to: 'none'
+version: 0.1.22+24
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  timezone: ^0.11.1
+  basic_utils: ^5.8.2
+  crypto: ^3.0.7
+  file_selector: ^1.1.0
+  flutter:
+    sdk: flutter
+  flutter_secure_storage: ^11.2.0
+  forui: ^0.25.0
+  path_provider: ^2.1.6
+  pointycastle: ^4.0.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
