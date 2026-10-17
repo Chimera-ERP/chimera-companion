@@ -1,5 +1,13 @@
 # Vendor protocol provenance
 
+## iMin customer display
+
+Reference: https://oss-sg.imin.sg/docs/en/CustomerDisplay.html
+Android API: https://developer.android.com/reference/android/app/Presentation
+Reviewed 2026-10-14. Uses Android DisplayManager/Presentation and application overlay
+permission for independent secondary-screen lifetime. No iMin SDK or vendor source
+is imported. Swan 2 physical firmware qualification remains pending.
+
 ## Tremol
 
 Source: https://tremol.bg/en/support/zfplab/RO/2601151250

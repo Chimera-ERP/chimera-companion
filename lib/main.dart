@@ -10,26 +10,69 @@ import 'pairing.dart';
 import 'debug_panel.dart';
 import 'local_bridge.dart';
 import 'enrollment.dart';
-import 'app_updates.dart';
+import 'companion_app_bar.dart';
 import 'service_console.dart';
 import 'diagnostic_outbox.dart';
+import 'customer_display_page.dart';
 
 void main() {
-  final previous=FlutterError.onError;
-  FlutterError.onError=(details) {
-    unawaited(reportCompanionError?.call('framework_error','Flutter ${details.exception.runtimeType}').catchError((_){ }));
+  WidgetsFlutterBinding.ensureInitialized();
+  final previous = FlutterError.onError;
+  FlutterError.onError = (details) {
+    unawaited(
+      reportCompanionError
+          ?.call('framework_error', 'Flutter ${details.exception.runtimeType}')
+          .catchError((_) {}),
+    );
     previous?.call(details);
   };
-  final previousPlatform=PlatformDispatcher.instance.onError;
-  PlatformDispatcher.instance.onError=(error,stack) {
-    unawaited(reportCompanionError?.call('uncaught_error','Runtime ${error.runtimeType}').catchError((_){ }));
-    return previousPlatform?.call(error,stack)??false;
+  final previousPlatform = PlatformDispatcher.instance.onError;
+  PlatformDispatcher.instance.onError = (error, stack) {
+    unawaited(
+      reportCompanionError
+          ?.call('uncaught_error', 'Runtime ${error.runtimeType}')
+          .catchError((_) {}),
+    );
+    return previousPlatform?.call(error, stack) ?? false;
   };
-  runApp(const CompanionApp());
+  // A boot-started engine has no Flutter view and cannot wait for widget initState.
+  // The UI attaches to this same bridge later; LocalBridge.start coalesces callers.
+  final bridge = LocalBridge();
+  unawaited(resumeSavedCompanion(bridge));
+  runApp(CompanionApp(bridge: bridge));
 }
 
-class CompanionApp extends StatelessWidget {
-  const CompanionApp({super.key});
+Future<void> resumeSavedCompanion(
+  LocalBridge bridge, {
+  FlutterSecureStorage storage = const FlutterSecureStorage(),
+}) async {
+  try {
+    if (await storage.read(key: 'setup_complete_v2') != 'true' ||
+        !hasSavedEnrollment(await storage.read(key: 'erp_pairing_v1'))) {
+      return;
+    }
+    await bridge.start();
+  } catch (_) {
+    // Keep the cached native display available; opening the UI offers retry.
+    debugLog('Pornirea conexiunii POS necesită verificarea configurației.');
+  }
+}
+
+class CompanionApp extends StatefulWidget {
+  const CompanionApp({super.key, this.bridge});
+  final LocalBridge? bridge;
+  @override
+  State<CompanionApp> createState() => _CompanionAppState();
+}
+
+class _CompanionAppState extends State<CompanionApp> {
+  late final _bridge = widget.bridge ?? LocalBridge();
+  bool _previousConfigurationOpen = false;
+  void _updating(bool value) {
+    if (value) _previousConfigurationOpen = _bridge.configurationOpen;
+    _bridge.configurationOpen = value || _previousConfigurationOpen;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = FTheme.neutral.dark.touch;
@@ -44,23 +87,50 @@ class CompanionApp extends StatelessWidget {
             foregroundColor: const Color(0xff171717),
             disabledBackgroundColor: const Color(0xff303030),
             disabledForegroundColor: const Color(0xffa3a3a3),
+            minimumSize: const Size(48, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: const Color(0xffeeeeee),
             foregroundColor: const Color(0xff171717),
+            minimumSize: const Size(48, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+        ),
+        outlinedButtonTheme: OutlinedButtonThemeData(
+          style: OutlinedButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
           ),
         ),
       ),
-      builder: (_, child) => FTheme(data: theme, child: child!),
-      home: const CompanionEntry(),
+      builder: (_, child) => FTheme(
+        data: theme,
+        child: CompanionUpdateScope(
+          isBusy: () => _bridge.busy,
+          setUpdating: _updating,
+          child: child!,
+        ),
+      ),
+      home: CompanionEntry(bridge: _bridge),
     );
   }
 }
 
 class CompanionEntry extends StatefulWidget {
-  const CompanionEntry({super.key});
+  const CompanionEntry({super.key, this.bridge});
+  final LocalBridge? bridge;
   @override
   State<CompanionEntry> createState() => _CompanionEntryState();
 }
@@ -91,9 +161,12 @@ class _CompanionEntryState extends State<CompanionEntry> {
 
   @override
   Widget build(BuildContext context) => _complete == null
-      ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+      ? Scaffold(
+          appBar: const CompanionAppBar(title: Text('Companion')),
+          body: const Center(child: CircularProgressIndicator()),
+        )
       : _complete == true
-      ? const CompanionHome()
+      ? CompanionHome(bridge: widget.bridge)
       : DeviceSetupPage(
           onCompleted: () {
             if (mounted) setState(() => _complete = true);
@@ -102,13 +175,14 @@ class _CompanionEntryState extends State<CompanionEntry> {
 }
 
 class CompanionHome extends StatefulWidget {
-  const CompanionHome({super.key});
+  const CompanionHome({super.key, this.bridge});
+  final LocalBridge? bridge;
   @override
   State<CompanionHome> createState() => _CompanionHomeState();
 }
 
 class _CompanionHomeState extends State<CompanionHome> {
-  final _bridge = LocalBridge();
+  late final LocalBridge _bridge;
   int? _selected;
   String? _error;
   static const _titles = [
@@ -116,10 +190,12 @@ class _CompanionHomeState extends State<CompanionHome> {
     'Casa de marcat',
     'Terminal de plată',
     'POS',
+    'Ecran client',
   ];
   @override
   void initState() {
     super.initState();
+    _bridge = widget.bridge ?? LocalBridge();
     _bridge.addListener(_update);
     _start();
   }
@@ -145,7 +221,7 @@ class _CompanionHomeState extends State<CompanionHome> {
   @override
   void dispose() {
     _bridge.removeListener(_update);
-    _bridge.close();
+    if (widget.bridge == null) unawaited(_bridge.close());
     super.dispose();
   }
 
@@ -196,28 +272,7 @@ class _CompanionHomeState extends State<CompanionHome> {
     ),
     onPress: action,
   );
-  void _select(int section, bool wide) {
-    if (wide) {
-      setState(() => _selected = section);
-      return;
-    }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => AnimatedBuilder(
-          animation: _bridge,
-          builder: (_, _) => Scaffold(
-            appBar: AppBar(title: Text(_titles[section])),
-            body: SafeArea(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.all(20),
-                child: _detail(section),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+  void _select(int section, bool wide) => setState(() => _selected = section);
 
   void _diagnostics() => Navigator.of(context).push(
     MaterialPageRoute<void>(
@@ -225,6 +280,7 @@ class _CompanionHomeState extends State<CompanionHome> {
     ),
   );
   Widget _detail(int section) => switch (section) {
+    4 => const CustomerDisplayPage(embedded: true),
     0 => FTileGroup(
       children: [
         _row(
@@ -340,127 +396,170 @@ class _CompanionHomeState extends State<CompanionHome> {
     ),
   };
   @override
-  Widget build(BuildContext context) => FTheme(
-    data: FTheme.neutral.dark.touch,
-    child: Scaffold(
-      appBar: AppBar(
-        title: const Text('Companion'),
-        actions: [
-          CompanionUpdateButton(isBusy: () => _bridge.busy || _bridge.configurationOpen,
-            setUpdating: (value) { _bridge.configurationOpen = value; if (mounted) setState(() {}); }),
-          IconButton(tooltip: 'Consolă ECR · DEV', icon: const Icon(Icons.terminal),
-            onPressed: () => Navigator.of(context).push(MaterialPageRoute<void>(
-              builder: (_) => ServiceConsole(bridge: _bridge)))),
-          IconButton(
-            tooltip: 'Actualizează conexiunile',
-            icon: const Icon(Icons.refresh),
-            onPressed: _bridge.busy
-                ? null
-                : () => _bridge.port == null ? _start() : _bridge.refresh(),
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final wide = constraints.maxWidth >= 840;
+      final detail = _selected;
+      final connections = ListView(
+        padding: const EdgeInsets.all(20),
+        children: [
+          Text(_bridge.location, style: Theme.of(context).textTheme.bodySmall),
+          const SizedBox(height: 16),
+          FTileGroup(
+            children: [
+              _row(
+                'Chimera',
+                _bridge.location,
+                Icons.cloud_outlined,
+                () => _select(0, wide),
+                state: _bridge.erpConnected ? 'Conectat' : 'Offline',
+              ),
+              _row(
+                'Casa de marcat',
+                '${_bridge.ecr['name']}',
+                Icons.receipt_long_outlined,
+                () => _select(1, wide),
+                state: _bridge.ecr['state'] == 'unconfigured'
+                    ? 'Opțional'
+                    : _bridge.ecr['state'] == 'ready'
+                    ? 'Conectat'
+                    : 'De verificat',
+              ),
+              _row(
+                'Terminal de plată',
+                'Viva Terminal',
+                Icons.contactless_outlined,
+                () => _select(2, wide),
+                state: _bridge.payment['state'] == 'disabled'
+                    ? 'Opțional'
+                    : _bridge.payment['state'] == 'ready'
+                    ? 'Conectat'
+                    : 'De verificat',
+              ),
+              _row(
+                'POS',
+                _bridge.port == null
+                    ? 'Server HTTPS oprit'
+                    : 'Server HTTPS disponibil',
+                Icons.point_of_sale_outlined,
+                () => _select(3, wide),
+              ),
+              _row(
+                'Ecran client',
+                'Coș și total',
+                Icons.monitor_outlined,
+                () => _select(4, wide),
+              ),
+            ],
           ),
-          IconButton(
-            tooltip: 'Diagnostic',
-            icon: const Icon(Icons.terminal),
-            onPressed: _diagnostics,
-          ),
-          IconButton(
-            tooltip: 'Configurare',
-            icon: const Icon(Icons.settings_outlined),
-            onPressed: () => _open(const DeviceSetupPage()),
-          ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 20),
+              child: Text(_error!),
+            ),
+          if (_bridge.activeCommand != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 20),
+              child: Text(
+                'Operațiune în curs: ${_bridge.activeCommand!['operation']}',
+              ),
+            ),
         ],
-      ),
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (_, constraints) {
-            final wide = constraints.maxWidth >= 700;
-            final connections = SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _bridge.location,
-                    style: const TextStyle(color: Colors.grey, fontSize: 13),
-                  ),
-                  const SizedBox(height: 16),
-                  FTileGroup(
-                    children: [
-                      _row(
-                        'Chimera',
-                        _bridge.location,
-                        Icons.cloud_outlined,
-                        () => _select(0, wide),
-                        state: _bridge.erpConnected ? 'Conectat' : 'Offline',
-                      ),
-                      _row(
-                        'Casa de marcat',
-                        '${_bridge.ecr['name']}',
-                        Icons.receipt_long_outlined,
-                        () => _select(1, wide),
-                        state: _bridge.ecr['state'] == 'ready'
-                            ? 'Conectat'
-                            : 'De verificat',
-                      ),
-                      _row(
-                        'Terminal de plată',
-                        'Viva Terminal',
-                        Icons.contactless_outlined,
-                        () => _select(2, wide),
-                        state: _bridge.payment['state'] == 'disabled'
-                            ? 'Opțional'
-                            : _bridge.payment['state'] == 'ready'
-                            ? 'Conectat'
-                            : 'De verificat',
-                      ),
-                      _row(
-                        'POS',
-                        _bridge.port == null
-                            ? 'Server HTTPS oprit'
-                            : 'Server HTTPS disponibil',
-                        Icons.point_of_sale_outlined,
-                        () => _select(3, wide),
-                      ),
-                    ],
-                  ),
-                  if (_error != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 20),
-                      child: Text(_error!),
+      );
+      final content = Align(
+        alignment: Alignment.topCenter,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                if (wide && detail != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 24),
+                    child: Text(
+                      _titles[detail],
+                      style: Theme.of(context).textTheme.headlineSmall,
                     ),
-                  if (_bridge.activeCommand != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 20),
-                      child: Text(
-                        'Operațiune în curs: ${_bridge.activeCommand!['operation']}',
+                  ),
+                if (detail == null)
+                  const Text('Selectează o conexiune.')
+                else
+                  _detail(detail),
+              ],
+            ),
+          ),
+        ),
+      );
+      return PopScope(
+        canPop: detail == null,
+        onPopInvokedWithResult: (didPop, _) {
+          if (!didPop) setState(() => _selected = null);
+        },
+        child: Scaffold(
+          appBar: CompanionAppBar(
+            title: Text(
+              !wide && detail != null ? _titles[detail] : 'Companion',
+            ),
+            leading: !wide && detail != null
+                ? IconButton(
+                    tooltip: 'Înapoi',
+                    onPressed: () => setState(() => _selected = null),
+                    icon: const Icon(Icons.arrow_back),
+                  )
+                : null,
+            autoCheck: true,
+            actions: [
+              IconButton(
+                tooltip: 'Actualizează conexiunile',
+                icon: const Icon(Icons.refresh),
+                onPressed: _bridge.busy
+                    ? null
+                    : () => _bridge.port == null ? _start() : _bridge.refresh(),
+              ),
+              PopupMenuButton<String>(
+                tooltip: 'Mai multe',
+                enabled: !_bridge.busy,
+                onSelected: (value) {
+                  if (value == 'settings') _open(const DeviceSetupPage());
+                  if (value == 'diagnostic') _diagnostics();
+                  if (value == 'console') {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => ServiceConsole(bridge: _bridge),
                       ),
-                    ),
+                    );
+                  }
+                },
+                itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'settings', child: Text('Configurare')),
+                  PopupMenuItem(value: 'diagnostic', child: Text('Diagnostic')),
+                  PopupMenuItem(
+                    value: 'console',
+                    child: Text('Consolă ECR · DEV'),
+                  ),
                 ],
               ),
-            );
-            return wide
+            ],
+          ),
+          body: SafeArea(
+            child: wide
                 ? Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      SizedBox(width: 360, child: connections),
+                      SizedBox(width: 320, child: connections),
                       const VerticalDivider(width: 1),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          padding: const EdgeInsets.all(24),
-                          child: _selected == null
-                              ? const Text(
-                                  'Selectează o conexiune pentru detalii.',
-                                )
-                              : _detail(_selected!),
-                        ),
-                      ),
+                      Expanded(child: content),
                     ],
                   )
-                : connections;
-          },
+                : detail == null
+                ? connections
+                : content,
+          ),
         ),
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -475,7 +574,7 @@ class _CompanionDiagnosticsState extends State<CompanionDiagnostics> {
   bool _errorsOnly = false;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
+    appBar: CompanionAppBar(
       title: const Text('Diagnostic'),
       actions: [
         IconButton(
@@ -510,7 +609,9 @@ class _CompanionDiagnosticsState extends State<CompanionDiagnostics> {
                 onTap: () => Navigator.of(context).push(
                   MaterialPageRoute<void>(
                     builder: (_) => Scaffold(
-                      appBar: AppBar(title: const Text('Rezultatul comenzii')),
+                      appBar: const CompanionAppBar(
+                        title: Text('Rezultatul comenzii'),
+                      ),
                       body: SingleChildScrollView(
                         padding: const EdgeInsets.all(20),
                         child: SelectableText(

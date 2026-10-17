@@ -5,11 +5,18 @@ import 'debug_panel.dart';
 import 'enrollment.dart';
 import 'device_credentials.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'setup_header.dart';
 
 class PairingPage extends StatefulWidget {
-  const PairingPage({super.key, this.embedded = false, this.onCompleted});
+  const PairingPage({
+    super.key,
+    this.embedded = false,
+    this.onCompleted,
+    this.action,
+  });
   final bool embedded;
   final Future<void> Function()? onCompleted;
+  final ValueNotifier<SetupAction?>? action;
   @override
   State<PairingPage> createState() => _PairingPageState();
 }
@@ -19,6 +26,28 @@ class _PairingPageState extends State<PairingPage> {
   final _pin = TextEditingController();
   bool _busy = false;
   bool _paired = false;
+  bool _error = false;
+  void _syncAction() => widget.action?.value = SetupAction(
+    _busy
+        ? 'Se asociază…'
+        : _paired
+        ? 'Continuă'
+        : 'Asociază',
+    _busy
+        ? null
+        : _paired
+        ? _continue
+        : _pair,
+    busy: _busy,
+  );
+  Future<void> _continue() async {
+    if (widget.onCompleted != null) {
+      await widget.onCompleted!();
+    } else if (mounted) {
+      Navigator.pop(context);
+    }
+  }
+
   String? _notice;
   set _message(String? value) {
     _notice = value;
@@ -30,6 +59,9 @@ class _PairingPageState extends State<PairingPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncAction();
+    });
     _restore();
   }
 
@@ -51,6 +83,8 @@ class _PairingPageState extends State<PairingPage> {
       );
     } catch (_) {
       if (mounted) setState(() => _message = 'Nu pot citi asocierea salvată.');
+    } finally {
+      if (mounted) _syncAction();
     }
   }
 
@@ -62,6 +96,7 @@ class _PairingPageState extends State<PairingPage> {
   }
 
   Future<void> _pair() async {
+    _error = true;
     Uri uri;
     try {
       uri = erpAddress(_url.text);
@@ -79,6 +114,7 @@ class _PairingPageState extends State<PairingPage> {
       _busy = true;
       _message = null;
     });
+    _syncAction();
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 10);
     try {
@@ -101,6 +137,7 @@ class _PairingPageState extends State<PairingPage> {
       await const FlutterSecureStorage().delete(key: 'enrollment_attempt_v1');
       _pin.clear();
       _paired = true;
+      _error = false;
       if (mounted) {
         setState(
           () => _message =
@@ -118,13 +155,14 @@ class _PairingPageState extends State<PairingPage> {
     } finally {
       client.close(force: true);
       if (mounted) setState(() => _busy = false);
+      if (mounted) _syncAction();
     }
   }
 
   @override
   Widget build(BuildContext context) => widget.embedded
       ? _body()
-      : DebugScaffold(title: 'Asociere cu ERP', body: _body());
+      : DebugScaffold(title: 'Asociere cu ERP', body: _body(), busy: _busy);
 
   Widget _body() => ListView(
     shrinkWrap: widget.embedded,
@@ -138,54 +176,79 @@ class _PairingPageState extends State<PairingPage> {
         ),
       if (!widget.embedded) const SizedBox(height: 16),
       const Text(
-        'Generează PIN-ul în Chimera → Dispozitive → Companion-uri. Nu este necesar QR sau cont de operator.',
+        'PIN-ul se generează în Chimera → Dispozitive → Companion-uri.',
       ),
       const SizedBox(height: 20),
-      TextField(
-        controller: _url,
-        onChanged: (value) {
-          if (value.startsWith('https://')) {
-            final host = value.substring(8);
-            _url.value = TextEditingValue(
-              text: host,
-              selection: TextSelection.collapsed(offset: host.length),
-            );
-          }
-        },
-        keyboardType: TextInputType.url,
-        autocorrect: false,
-        enableSuggestions: false,
-        decoration: const InputDecoration(
-          labelText: 'Adresa ERP',
-          prefixText: 'https://',
-          floatingLabelBehavior: FloatingLabelBehavior.always,
-          hintText: 'chimera.firma.ro',
+      if (_paired) ...[
+        const Icon(
+          Icons.check_circle_outline,
+          size: 32,
+          color: Color(0xff79dbc3),
         ),
-      ),
-      const SizedBox(height: 16),
-      TextField(
-        controller: _pin,
-        keyboardType: TextInputType.number,
-        maxLength: 6,
-        decoration: const InputDecoration(labelText: 'PIN generat în ERP'),
-      ),
+        const SizedBox(height: 12),
+        TextButton(
+          onPressed: _busy
+              ? null
+              : () {
+                  setState(() {
+                    _paired = false;
+                    _notice = null;
+                  });
+                  _syncAction();
+                },
+          child: const Text('Schimbă asocierea'),
+        ),
+      ],
+      if (!_paired) ...[
+        TextField(
+          controller: _url,
+          enabled: !_busy,
+          onChanged: (value) {
+            if (value.startsWith('https://')) {
+              final host = value.substring(8);
+              _url.value = TextEditingValue(
+                text: host,
+                selection: TextSelection.collapsed(offset: host.length),
+              );
+            }
+          },
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          enableSuggestions: false,
+          decoration: const InputDecoration(
+            labelText: 'Adresa ERP',
+            prefixText: 'https://',
+            floatingLabelBehavior: FloatingLabelBehavior.always,
+            hintText: 'chimera.firma.ro',
+          ),
+        ),
+        const SizedBox(height: 16),
+        TextField(
+          controller: _pin,
+          enabled: !_busy,
+          keyboardType: TextInputType.number,
+          maxLength: 6,
+          decoration: const InputDecoration(labelText: 'PIN generat în ERP'),
+        ),
+      ],
       if (_notice != null)
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
             _notice!,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               height: 1.5,
-              color: Color(0xff79dbc3),
+              color: _error ? Colors.amber : const Color(0xff79dbc3),
             ),
           ),
         ),
-      FilledButton(
-        onPressed: _busy ? null : _pair,
-        child: Text(_busy ? 'Se asociază…' : 'Asociază'),
-      ),
-      if (_paired)
+      if (widget.action == null && !_paired)
+        FilledButton(
+          onPressed: _busy ? null : _pair,
+          child: Text(_busy ? 'Se asociază…' : 'Asociază'),
+        ),
+      if (widget.action == null && _paired)
         FilledButton.icon(
           onPressed: _busy
               ? null

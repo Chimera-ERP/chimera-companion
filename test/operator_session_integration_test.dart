@@ -123,6 +123,7 @@ void main() {
         String? sessionId,
         bool assertion = false,
         String? loginProof,
+        Map<String, dynamic>? posEvidence,
       }) async {
         final challenge =
             jsonDecode(
@@ -139,6 +140,10 @@ void main() {
           'operation': 'nonFiscal',
           'payloadHash': sha256.convert(utf8.encode(payload)).toString(),
           'operatorSession': ?sessionId,
+          if (posEvidence != null)
+            'posSessionHash': sha256
+                .convert(utf8.encode(jsonEncode(posEvidence)))
+                .toString(),
         });
         final body = <String, dynamic>{
           'lease': lease,
@@ -147,6 +152,7 @@ void main() {
           'signature': sign(pos.privateKey as ECPrivateKey, message),
           'payloadJson': payload,
           'operatorLoginProof': ?loginProof,
+          'posOperatorSession': ?posEvidence,
         };
         if (assertion) {
           final client = utf8.encode(
@@ -184,22 +190,211 @@ void main() {
         return body;
       }
 
-      final loginClaims = {...base, 'kind':'operator_login','sub':'operator',
-        'credential':'credential','origin':'https://pos.example.test','exp':start+300};
+      final loginClaims = {
+        ...base,
+        'kind': 'operator_login',
+        'sub': 'operator',
+        'credential': 'credential',
+        'origin': 'https://pos.example.test',
+        'exp': start + 300,
+      };
       for (final invalid in [
-        {...loginClaims,'pos':'other'},
-        {...loginClaims,'sub':'other'},
-        {...loginClaims,'credential':'revoked-or-other'},
-        {...loginClaims,'origin':'https://other.test'},
-        {...loginClaims,'exp':start+301},
-        {...loginClaims,'exp':start},
+        {...loginClaims, 'pos': 'other'},
+        {...loginClaims, 'sub': 'other'},
+        {...loginClaims, 'credential': 'revoked-or-other'},
+        {...loginClaims, 'origin': 'https://other.test'},
+        {...loginClaims, 'exp': start + 301},
+        {...loginClaims, 'exp': start},
       ]) {
-        await expectLater(session.authorize(await command(loginProof:token(invalid)), 'https://pos.example.test'), throwsFormatException);
+        await expectLater(
+          session.authorize(
+            await command(loginProof: token(invalid)),
+            'https://pos.example.test',
+          ),
+          throwsFormatException,
+        );
       }
-      final proofCommand=await command(loginProof:token(loginClaims));
-      final proofSession=await session.authorize(proofCommand,'https://pos.example.test');
-      expect(proofSession['operatorId'],'operator');
-      await expectLater(session.authorize(proofCommand,'https://pos.example.test'),throwsFormatException);
+      final proofCommand = await command(loginProof: token(loginClaims));
+      final proofSession = await session.authorize(
+        proofCommand,
+        'https://pos.example.test',
+      );
+      expect(proofSession['operatorId'], 'operator');
+      await expectLater(
+        session.authorize(proofCommand, 'https://pos.example.test'),
+        throwsFormatException,
+      );
+      // One POS login, reusable across commands and Companion restart, without
+      // ever issuing a separate Companion operator session or passkey challenge.
+      final posClaims = {
+        ...loginClaims,
+        'kind': 'pos_operator_login',
+        'session_id': 'original-login',
+        'auth_at': start,
+        'exp': start + 86400,
+      };
+      final authorityProof = {'type': 'authority', 'token': token(posClaims)};
+      final firstPos = await command(posEvidence: authorityProof);
+      final firstResult = await session.authorize(
+        firstPos,
+        'https://pos.example.test',
+      );
+      expect(firstResult['operatorId'], 'operator');
+      expect(firstResult.containsKey('operatorSession'), false);
+      await expectLater(
+        session.authorize(firstPos, 'https://pos.example.test'),
+        throwsFormatException,
+      );
+      session = create();
+      await session.restore();
+      expect(
+        (await session.authorize(
+          await command(posEvidence: authorityProof),
+          'https://pos.example.test',
+        ))['operatorId'],
+        'operator',
+      );
+      for (final invalid in [
+        {...posClaims, 'pos': 'another'},
+        {...posClaims, 'sub': 'another'},
+        {...posClaims, 'version': 2},
+        {...posClaims, 'origin': 'https://evil.test'},
+        {...posClaims, 'auth_at': start - 604800},
+        {...posClaims, 'credential': 'unknown'},
+        {
+          ...posClaims,
+          'cnf': {'jwk': jwk(companion.publicKey as ECPublicKey)},
+        },
+      ]) {
+        await expectLater(
+          session.authorize(
+            await command(
+              posEvidence: {'type': 'authority', 'token': token(invalid)},
+            ),
+            'https://pos.example.test',
+          ),
+          throwsFormatException,
+        );
+      }
+      final bounds = {
+        'v': 1,
+        'kind': 'pos_operator_session',
+        'org': 'org',
+        'location': 'location',
+        'pos': 'pos',
+        'operator': 'operator',
+        'origin': 'https://pos.example.test',
+        'cnf': base['cnf'],
+        'iat': start,
+        'exp': start + 86400,
+        'nonce': b64(List<int>.filled(32, 1)),
+      };
+      Map<String, dynamic> offlineProof(Map<String, dynamic> scope) {
+        final challenge = b64(utf8.encode(jsonEncode(scope)));
+        final client = utf8.encode(
+          jsonEncode({
+            'type': 'webauthn.get',
+            'challenge': challenge,
+            'origin': 'https://pos.example.test',
+            'crossOrigin': false,
+          }),
+        );
+        final auth = [
+          ...sha256.convert(utf8.encode('example.test')).bytes,
+          5,
+          0,
+          0,
+          0,
+          1,
+        ];
+        final signature = CryptoUtils.ecSign(
+          passkey.privateKey as ECPrivateKey,
+          Uint8List.fromList([...auth, ...sha256.convert(client).bytes]),
+          algorithmName: 'SHA-256/ECDSA',
+        );
+        return {
+          'type': 'passkey',
+          'challenge': challenge,
+          'assertion': {
+            'id': 'credential',
+            'response': {
+              'authenticatorData': b64(auth),
+              'clientDataJSON': b64(client),
+              'signature': b64(
+                base64Decode(CryptoUtils.ecSignatureToBase64(signature)),
+              ),
+            },
+          },
+        };
+      }
+
+      final offline = offlineProof(bounds);
+      expect(
+        (await session.authorize(
+          await command(posEvidence: offline),
+          'https://pos.example.test',
+        ))['operatorId'],
+        'operator',
+      );
+      now = now.add(const Duration(hours: 8));
+      session = create();
+      await session.restore();
+      expect(
+        (await session.authorize(
+          await command(posEvidence: offline),
+          'https://pos.example.test',
+        ))['operatorId'],
+        'operator',
+      );
+      expect(
+        (await session.authorize(
+          await command(posEvidence: authorityProof),
+          'https://pos.example.test',
+        ))['operatorId'],
+        'operator',
+      );
+      for (final invalid in [
+        {...bounds, 'pos': 'other'},
+        {...bounds, 'operator': 'other'},
+        {...bounds, 'org': 'other'},
+        {...bounds, 'location': 'other'},
+        {...bounds, 'origin': 'https://other.test'},
+        {
+          ...bounds,
+          'cnf': {'jwk': jwk(companion.publicKey as ECPublicKey)},
+        },
+        {...bounds, 'exp': start + 604801},
+        {...bounds, 'exp': start + 1},
+        {...bounds, 'iat': now.millisecondsSinceEpoch ~/ 1000 + 60},
+      ]) {
+        await expectLater(
+          session.authorize(
+            await command(posEvidence: offlineProof(invalid)),
+            'https://pos.example.test',
+          ),
+          throwsFormatException,
+        );
+      }
+      final changed = await command(posEvidence: offline);
+      changed['posOperatorSession'] = authorityProof;
+      await expectLater(
+        session.authorize(changed, 'https://pos.example.test'),
+        throwsFormatException,
+      );
+      await session.updateTrust({
+        ...trust,
+        'revoked_credentials': ['credential'],
+      });
+      for (final evidence in [authorityProof, offline]) {
+        await expectLater(
+          session.authorize(
+            await command(posEvidence: evidence),
+            'https://pos.example.test',
+          ),
+          throwsFormatException,
+        );
+      }
+      await session.updateTrust(trust);
       final first = await command(assertion: true);
       final authorized = await session.authorize(
         first,

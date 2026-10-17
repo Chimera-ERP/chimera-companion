@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "documents": [
+    {
+      "path": "AGENTS.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "CLAUDE.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "README.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "docs/api.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "docs/https-release-gate.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "docs/implementation-checklist.md",
+      "classification": "active-work",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "docs/pairing.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    },
+    {
+      "path": "docs/vendor-provenance.md",
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference",
+      "originalPath": null
+    }
+  ]
+}

@@ -1,7 +1,7 @@
 name: chimera_companion
 description: "Local hardware companion for Chimera ERP and POS."
 publish_to: 'none'
-version: 0.1.22+24
+version: 0.1.31+33
 
 environment:
   sdk: ^3.12.2
@@ -25,3 +25,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/customer-display/index.html

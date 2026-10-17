@@ -7,16 +7,34 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'tls_provisioning.dart';
 import 'connectivity_client.dart';
+import 'setup_header.dart';
+import 'companion_dialog.dart';
+import 'android_settings.dart';
 
 /// Manual CSR mode never asks the administrator to supply a private key.
 class TlsSetup extends StatefulWidget {
-  const TlsSetup({super.key, required this.onCompleted});
+  const TlsSetup({super.key, required this.onCompleted, this.action});
   final VoidCallback onCompleted;
+  final ValueNotifier<SetupAction?>? action;
   @override
   State<TlsSetup> createState() => _TlsSetupState();
 }
 
-class _TlsSetupState extends State<TlsSetup> {
+class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
+  VoidCallback? _dialogUpdate;
+  void _change(VoidCallback action) {
+    if (!mounted) return;
+    setState(action);
+    _dialogUpdate?.call();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && !_busy && _automatic) {
+      _detectLan();
+    }
+  }
+
   final _host = TextEditingController(), _chain = TextEditingController();
   final _ip = TextEditingController();
   final _proxy = TextEditingController();
@@ -24,25 +42,43 @@ class _TlsSetupState extends State<TlsSetup> {
   String? _interface;
   String? _csr, _message;
   bool _busy = false;
+  void _syncAction() => widget.action?.value = SetupAction(
+    _busy
+        ? 'Securizare în curs…'
+        : _automatic
+        ? 'Reîncearcă'
+        : 'Configurare avansată',
+    _busy
+        ? null
+        : _automatic
+        ? _configureAutomatically
+        : _advanced,
+    busy: _busy,
+  );
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _syncAction();
+    });
     _restoreCsr();
     _detectLan();
   }
 
   Future<void> _detectLan() async {
+    if (_busy) return;
     try {
       final address = await detectLanAddress();
-      if (!mounted || _ip.text.isNotEmpty) return;
-      setState(() {
+      if (!mounted) return;
+      _change(() {
         _ip.text = address.ip;
         _interface = address.name;
       });
-      await _configureAutomatically();
+      if (_automatic) await _configureAutomatically();
     } catch (error) {
       if (mounted) {
-        setState(
+        _change(
           () => _message = error is HttpException ? error.message : '$error',
         );
       }
@@ -63,7 +99,7 @@ class _TlsSetupState extends State<TlsSetup> {
           !mounted) {
         return;
       }
-      setState(() {
+      _change(() {
         _host.text = data['hostname'] as String;
         _csr = data['csr'] as String;
       });
@@ -79,11 +115,15 @@ class _TlsSetupState extends State<TlsSetup> {
       interfaceName: _interface,
       onlyIfDue: true,
     );
-    if (mounted) widget.onCompleted();
+    if (mounted) {
+      if (_dialogUpdate != null) Navigator.of(context).pop();
+      widget.onCompleted();
+    }
   });
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _host.dispose();
     _chain.dispose();
     _ip.dispose();
@@ -97,205 +137,300 @@ class _TlsSetupState extends State<TlsSetup> {
   }
 
   Future<void> _run(Future<void> Function() action) async {
-    setState(() {
+    if (_busy) return;
+    _change(() {
       _busy = true;
       _message = null;
     });
+    _syncAction();
     try {
       await action();
     } catch (error) {
       if (mounted) {
-        setState(
+        _change(
           () => _message = error is HttpException ? error.message : '$error',
         );
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (mounted) {
+        _change(() => _busy = false);
+        _syncAction();
+      }
     }
+  }
+
+  Future<void> _settings() async {
+    try {
+      await AndroidSettings.open('wifi');
+    } catch (_) {
+      if (mounted) _change(() => _message = 'Nu pot deschide setările Wi-Fi.');
+    }
+  }
+
+  Future<void> _advanced() async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => StatefulBuilder(
+        builder: (context, update) {
+          _dialogUpdate = () {
+            if (context.mounted) update(() {});
+          };
+          return CompanionDialog(
+            title: 'Rețea · setări avansate',
+            busy: _busy,
+            actions: [
+              TextButton(
+                onPressed: _busy ? null : () => Navigator.pop(context),
+                child: const Text('Închide'),
+              ),
+              if (_automatic)
+                FilledButton(
+                  onPressed: _busy ? null : _configureAutomatically,
+                  child: const Text('Securizează conexiunea'),
+                ),
+            ],
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                TextField(
+                  controller: _ip,
+                  enabled: !_busy,
+                  onChanged: (_) => _interface = null,
+                  decoration: const InputDecoration(
+                    labelText: 'IP LAN al Companion-ului',
+                  ),
+                ),
+                const SizedBox(height: 16),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('Certificat administrat manual'),
+                  value: !_automatic,
+                  onChanged: _busy
+                      ? null
+                      : (v) {
+                          _change(() => _automatic = !v);
+                          _syncAction();
+                        },
+                ),
+                if (!_automatic) ...[
+                  const Text(
+                    'CSR și certificat individual',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text(
+                    'Cheia privată este generată aici și nu părăsește telefonul. Certificatul trebuie emis de o autoritate în care browserul are încredere.',
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _proxy,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    keyboardType: TextInputType.url,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Endpoint reverse proxy HTTPS (opțional)',
+                      helperText:
+                          'Proxy-ul trebuie să valideze TLS-ul backend; nu folosi HTTP sau tls_insecure_skip_verify.',
+                      helperMaxLines: 3,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _host,
+                    autocorrect: false,
+                    enableSuggestions: false,
+                    keyboardType: TextInputType.url,
+                    enabled: !_busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Hostname Companion',
+                      hintText: 'Hostname configurat în DNS',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton.icon(
+                    onPressed: _busy
+                        ? null
+                        : () => _run(() async {
+                            final csr = await (await _provisioning()).createCsr(
+                              _host.text,
+                            );
+                            if (mounted) {
+                              _change(() {
+                                _csr = csr;
+                                _message = null;
+                              });
+                            }
+                          }),
+                    icon: const Icon(Icons.key),
+                    label: const Text('Generează CSR'),
+                  ),
+                  if (_csr != null) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      onPressed: () =>
+                          Clipboard.setData(ClipboardData(text: _csr!)),
+                      icon: const Icon(Icons.copy),
+                      label: const Text('Copiază CSR'),
+                    ),
+                    ExpansionTile(
+                      title: const Text('Vezi CSR'),
+                      children: [
+                        SelectableText(
+                          _csr!,
+                          style: const TextStyle(
+                            fontFamily: 'monospace',
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    OutlinedButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _run(() async {
+                              final file = await openFile();
+                              if (file == null) return;
+                              if (await file.length() > 65536) {
+                                throw const FormatException(
+                                  'Fișierul certificatului este prea mare.',
+                                );
+                              }
+                              final chain = await file.readAsString();
+                              if (!chain.contains('BEGIN CERTIFICATE') ||
+                                  chain.contains('PRIVATE KEY')) {
+                                throw const FormatException(
+                                  'Selectează doar certificatul PEM și lanțul, fără cheie privată.',
+                                );
+                              }
+                              _chain.text = chain;
+                              _message =
+                                  'Certificat încărcat. Validează înainte de instalare.';
+                            }),
+                      icon: const Icon(Icons.upload_file),
+                      label: const Text('Importă certificat PEM'),
+                    ),
+                    TextField(
+                      controller: _chain,
+                      autocorrect: false,
+                      enableSuggestions: false,
+                      enabled: !_busy,
+                      maxLines: 6,
+                      decoration: const InputDecoration(
+                        labelText: 'Certificat și lanț intermediar PEM',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    FilledButton.icon(
+                      onPressed: _busy
+                          ? null
+                          : () => _run(() async {
+                              await (await _provisioning()).install(
+                                _host.text,
+                                _chain.text,
+                                reverseProxy: _proxy.text.trim().isEmpty
+                                    ? null
+                                    : _proxy.text.trim(),
+                              );
+                              await const FlutterSecureStorage().delete(
+                                key: 'connectivity_settings_v1',
+                              );
+                              await const FlutterSecureStorage().delete(
+                                key: 'connectivity_authorization_v1',
+                              );
+                              if (mounted && context.mounted) {
+                                Navigator.of(context).pop();
+                                widget.onCompleted();
+                              }
+                            }),
+                      icon: const Icon(Icons.verified_user),
+                      label: const Text('Validează și instalează'),
+                    ),
+                  ],
+                ],
+
+                if (_message != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 16),
+                    child: Text(_message!),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    _dialogUpdate = null;
   }
 
   @override
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      if (_automatic) ...[
-        const Text(
-          'Securizăm automat conexiunea cu POS-ul. Prima emitere a certificatului poate dura câteva minute.',
-        ),
-        const SizedBox(height: 16),
-        if (_interface != null) Text('Rețea detectată: ${_ip.text}'),
-        ExpansionTile(
-          title: const Text('Adresă de rețea manuală'),
-          initiallyExpanded: _interface == null,
-          children: [
-            TextField(
-              controller: _ip,
-              onChanged: (_) => _interface = null,
-              autocorrect: false,
-              enableSuggestions: false,
-              keyboardType: TextInputType.url,
-              enabled: !_busy,
-              decoration: const InputDecoration(
-                labelText: 'IP LAN al acestui Companion',
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        FilledButton(
-          onPressed: _busy ? null : _configureAutomatically,
-          child: Text(_busy ? 'Securizare în curs…' : 'Reîncearcă securizarea'),
-        ),
-      ],
-      ExpansionTile(
-        title: const Text('Setări avansate'),
-        subtitle: const Text('Doar pentru infrastructură configurată separat'),
+      Text(
+        _ip.text.isEmpty
+            ? 'Se caută o conexiune Wi-Fi sau Ethernet…'
+            : 'Adresă detectată: ${_ip.text}',
+        style: Theme.of(context).textTheme.titleMedium,
+      ),
+      const SizedBox(height: 12),
+      Text(
+        _automatic
+            ? 'Securizarea conexiunii cu POS-ul este automată.'
+            : 'Certificat administrat manual.',
+        style: Theme.of(context).textTheme.bodySmall,
+      ),
+      const SizedBox(height: 20),
+      Wrap(
+        spacing: 12,
+        runSpacing: 8,
         children: [
-          SwitchListTile(
-            title: const Text('Certificat administrat manual'),
-            value: !_automatic,
-            onChanged: _busy
-                ? null
-                : (value) => setState(() => _automatic = !value),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _settings,
+            icon: const Icon(Icons.wifi, size: 18),
+            label: const Text('Setări Wi-Fi'),
+          ),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _detectLan,
+            icon: const Icon(Icons.refresh, size: 18),
+            label: const Text('Reverifică rețeaua'),
           ),
         ],
       ),
-      if (!_automatic) ...[
-        const Text(
-          'CSR și certificat individual',
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+      const SizedBox(height: 12),
+      Align(
+        alignment: Alignment.centerLeft,
+        child: TextButton.icon(
+          onPressed: _busy ? null : _advanced,
+          icon: const Icon(Icons.tune, size: 18),
+          label: const Text('Setări avansate'),
         ),
-        const SizedBox(height: 12),
-        const Text(
-          'Cheia privată este generată aici și nu părăsește telefonul. Certificatul trebuie emis de o autoritate în care browserul are încredere.',
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _proxy,
-          autocorrect: false,
-          enableSuggestions: false,
-          keyboardType: TextInputType.url,
-          enabled: !_busy,
-          decoration: const InputDecoration(
-            labelText: 'Endpoint reverse proxy HTTPS (opțional)',
-            helperText:
-                'Proxy-ul trebuie să valideze TLS-ul backend; nu folosi HTTP sau tls_insecure_skip_verify.',
-            helperMaxLines: 3,
-          ),
-        ),
-        const SizedBox(height: 16),
-        TextField(
-          controller: _host,
-          autocorrect: false,
-          enableSuggestions: false,
-          keyboardType: TextInputType.url,
-          enabled: !_busy,
-          decoration: const InputDecoration(
-            labelText: 'Hostname Companion',
-            hintText: 'Hostname configurat în DNS',
-          ),
-        ),
-        const SizedBox(height: 12),
-        OutlinedButton.icon(
-          onPressed: _busy
-              ? null
-              : () => _run(() async {
-                  final csr = await (await _provisioning()).createCsr(
-                    _host.text,
-                  );
-                  if (mounted) {
-                    setState(() {
-                      _csr = csr;
-                      _message = null;
-                    });
-                  }
-                }),
-          icon: const Icon(Icons.key),
-          label: const Text('Generează CSR'),
-        ),
-        if (_csr != null) ...[
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: () => Clipboard.setData(ClipboardData(text: _csr!)),
-            icon: const Icon(Icons.copy),
-            label: const Text('Copiază CSR'),
-          ),
-          ExpansionTile(
-            title: const Text('Vezi CSR'),
-            children: [
-              SelectableText(
-                _csr!,
-                style: const TextStyle(fontFamily: 'monospace', fontSize: 11),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: _busy
-                ? null
-                : () => _run(() async {
-                    final file = await openFile();
-                    if (file == null) return;
-                    if (await file.length() > 65536) {
-                      throw const FormatException(
-                        'Fișierul certificatului este prea mare.',
-                      );
-                    }
-                    final chain = await file.readAsString();
-                    if (!chain.contains('BEGIN CERTIFICATE') ||
-                        chain.contains('PRIVATE KEY')) {
-                      throw const FormatException(
-                        'Selectează doar certificatul PEM și lanțul, fără cheie privată.',
-                      );
-                    }
-                    _chain.text = chain;
-                    _message =
-                        'Certificat încărcat. Validează înainte de instalare.';
-                  }),
-            icon: const Icon(Icons.upload_file),
-            label: const Text('Importă certificat PEM'),
-          ),
-          TextField(
-            controller: _chain,
-            autocorrect: false,
-            enableSuggestions: false,
-            enabled: !_busy,
-            maxLines: 6,
-            decoration: const InputDecoration(
-              labelText: 'Certificat și lanț intermediar PEM',
-            ),
-          ),
-          const SizedBox(height: 12),
-          FilledButton.icon(
-            onPressed: _busy
-                ? null
-                : () => _run(() async {
-                    await (await _provisioning()).install(
-                      _host.text,
-                      _chain.text,
-                      reverseProxy: _proxy.text.trim().isEmpty
-                          ? null
-                          : _proxy.text.trim(),
-                    );
-                    await const FlutterSecureStorage().delete(
-                      key: 'connectivity_settings_v1',
-                    );
-                    await const FlutterSecureStorage().delete(
-                      key: 'connectivity_authorization_v1',
-                    );
-                    if (mounted) widget.onCompleted();
-                  }),
-            icon: const Icon(Icons.verified_user),
-            label: const Text('Validează și instalează'),
-          ),
-        ],
-      ],
+      ),
       if (_message != null)
         Padding(
-          padding: const EdgeInsets.only(top: 12),
+          padding: const EdgeInsets.only(top: 16),
           child: Text(_message!, style: const TextStyle(color: Colors.amber)),
         ),
-      if (_busy) const LinearProgressIndicator(),
+      if (_busy)
+        const Padding(
+          padding: EdgeInsets.only(top: 16),
+          child: LinearProgressIndicator(),
+        ),
+      if (widget.action == null)
+        Padding(
+          padding: const EdgeInsets.only(top: 16),
+          child: FilledButton(
+            onPressed: _busy
+                ? null
+                : _automatic
+                ? _configureAutomatically
+                : _advanced,
+            child: const Text('Continuă'),
+          ),
+        ),
     ],
   );
 }

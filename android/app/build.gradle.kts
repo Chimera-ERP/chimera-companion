@@ -23,6 +23,7 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        testInstrumentationRunner = "ro.tabusociety.chimera_companion.CustomerDisplayTestRunner"
     }
 
     buildTypes {

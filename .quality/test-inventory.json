@@ -1,0 +1,892 @@
+{
+  "version": 2,
+  "repository": "chimera-companion",
+  "tests": [
+    {
+      "id": "chimera-companion:95ecfe461781ba275460",
+      "repository": "chimera-companion",
+      "source": "test/adapters_test.dart",
+      "title": "adapters_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/adapters_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:54ced106cbafc0f905b6",
+      "repository": "chimera-companion",
+      "source": "test/api_documentation_test.dart",
+      "title": "api_documentation_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/api_documentation_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:fa2efcbb8391ecd342d0",
+      "repository": "chimera-companion",
+      "source": "test/app_updates_test.dart",
+      "title": "app_updates_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/app_updates_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:b1cfc1bb20234b7ceeb2",
+      "repository": "chimera-companion",
+      "source": "test/boot_resume_test.dart",
+      "title": "boot_resume_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/boot_resume_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:1a5577d6bb0828cfaa3f",
+      "repository": "chimera-companion",
+      "source": "test/catalog_http_test.dart",
+      "title": "catalog_http_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/catalog_http_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:cfa2e0b7e6d5fcda653e",
+      "repository": "chimera-companion",
+      "source": "test/command_executor_test.dart",
+      "title": "command_executor_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/command_executor_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:44e701078903d894655c",
+      "repository": "chimera-companion",
+      "source": "test/connectivity_client_test.dart",
+      "title": "connectivity_client_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/connectivity_client_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:bb17e1ea1647cdbde88d",
+      "repository": "chimera-companion",
+      "source": "test/contracts_test.dart",
+      "title": "contracts_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/contracts_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:8e104bdb9031c82c8f38",
+      "repository": "chimera-companion",
+      "source": "test/customer_display_authorization_test.dart",
+      "title": "customer_display_authorization_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Signed paired POS can update display without operator; copied tokens, tampering, replay and ungranted operations fail",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/customer_display_authorization_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic signing identities; no physical LAN",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:01d3d6bb638f582ddfab",
+      "repository": "chimera-companion",
+      "source": "test/customer_display_bundle_test.dart",
+      "title": "customer_display_bundle_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Atomic offline bundle installation, cold restore, hash/size/scope rejection and previous-version preservation",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/customer_display_bundle_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic files; native Android and physical checks recorded separately",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:a71e228a174f3eb38e98",
+      "repository": "chimera-companion",
+      "source": "test/customer_display_stream_test.dart",
+      "title": "customer_display_stream_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Persistent TLS display stream verifies paired signatures, challenge freshness, payload integrity, expiry and revocation; rejects other operations and oversized frames",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/customer_display_stream_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Real loopback TLS/WebSocket with synthetic identities; native display rendering verified separately on iMin",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:c94cc9d9502ad1ac28dd",
+      "repository": "chimera-companion",
+      "source": "test/customer_display_test.dart",
+      "title": "customer_display_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Bounded public basket payload and paired display dispatch without fiscal device access",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/customer_display_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Mocked Android method channel; physical iMin acceptance pending",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:be01591de69aa3df2157",
+      "repository": "chimera-companion",
+      "source": "test/daily_z_test.dart",
+      "title": "daily_z_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/daily_z_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:ee06d99edfc15821144a",
+      "repository": "chimera-companion",
+      "source": "test/datecs_device_client_test.dart",
+      "title": "datecs_device_client_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/datecs_device_client_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:2fd70b892f036fe06452",
+      "repository": "chimera-companion",
+      "source": "test/datecs_native_test.dart",
+      "title": "datecs_native_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/datecs_native_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:ee6460dba075b456c8b2",
+      "repository": "chimera-companion",
+      "source": "test/device_credentials_test.dart",
+      "title": "device_credentials_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/device_credentials_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:5754257f85b1f95a7c32",
+      "repository": "chimera-companion",
+      "source": "test/diagnostic_outbox_test.dart",
+      "title": "diagnostic_outbox_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/diagnostic_outbox_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:ceb72df94e557944f763",
+      "repository": "chimera-companion",
+      "source": "test/enrollment_migration_test.dart",
+      "title": "enrollment_migration_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/enrollment_migration_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:fd8c117e98439fc594d6",
+      "repository": "chimera-companion",
+      "source": "test/enrollment_test.dart",
+      "title": "enrollment_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/enrollment_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:98ee2643c2b6db4b924d",
+      "repository": "chimera-companion",
+      "source": "test/erp_commands_test.dart",
+      "title": "erp_commands_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/erp_commands_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:753d68ad1811a9e352a8",
+      "repository": "chimera-companion",
+      "source": "test/external_payment_test.dart",
+      "title": "external_payment_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/external_payment_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:4ab530984f90deb6da6b",
+      "repository": "chimera-companion",
+      "source": "test/fiscal_device_test.dart",
+      "title": "fiscal_device_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/fiscal_device_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:f90251adc285c182998f",
+      "repository": "chimera-companion",
+      "source": "test/hardware_smoke_test.dart",
+      "title": "hardware_smoke_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/hardware_smoke_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:25eb1b2dd52889406af8",
+      "repository": "chimera-companion",
+      "source": "test/home_layout_test.dart",
+      "title": "home_layout_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/home_layout_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:b4d00928865c624a4657",
+      "repository": "chimera-companion",
+      "source": "test/journal_test.dart",
+      "title": "journal_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/journal_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:de2e6cbb8d111f95cf3c",
+      "repository": "chimera-companion",
+      "source": "test/local_bridge_test.dart",
+      "title": "local_bridge_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/local_bridge_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:6de19ef8dc53a1b95067",
+      "repository": "chimera-companion",
+      "source": "test/local_server_test.dart",
+      "title": "local_server_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/local_server_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:6a2a4cb73655ef9466e7",
+      "repository": "chimera-companion",
+      "source": "test/local_tls_test.dart",
+      "title": "local_tls_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/local_tls_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:df492f7dfb6939ed952f",
+      "repository": "chimera-companion",
+      "source": "test/offline_grant_test.dart",
+      "title": "offline_grant_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/offline_grant_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:52fea22be393aa9789d7",
+      "repository": "chimera-companion",
+      "source": "test/offline_session_test.dart",
+      "title": "offline_session_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/offline_session_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:455575844451231a31ba",
+      "repository": "chimera-companion",
+      "source": "test/operator_assertion_test.dart",
+      "title": "operator_assertion_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/operator_assertion_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:7e57cb20afb4383efb50",
+      "repository": "chimera-companion",
+      "source": "test/operator_change_test.dart",
+      "title": "operator_change_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/operator_change_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:31980608e47ce2e554f9",
+      "repository": "chimera-companion",
+      "source": "test/operator_readiness_test.dart",
+      "title": "operator_readiness_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/operator_readiness_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:1b3ea3a67d8f8fbae533",
+      "repository": "chimera-companion",
+      "source": "test/operator_session_integration_test.dart",
+      "title": "operator_session_integration_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/operator_session_integration_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:a5fdde4670fa083c3450",
+      "repository": "chimera-companion",
+      "source": "test/pairing_test.dart",
+      "title": "pairing_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/pairing_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:f49df670c5415351956f",
+      "repository": "chimera-companion",
+      "source": "test/payment_admission_test.dart",
+      "title": "payment_admission_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/payment_admission_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:58f28eb3e8b03be95c7e",
+      "repository": "chimera-companion",
+      "source": "test/payment_evidence_test.dart",
+      "title": "payment_evidence_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/payment_evidence_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:11d28d7f555cb65087f8",
+      "repository": "chimera-companion",
+      "source": "test/payment_rejection_test.dart",
+      "title": "payment_rejection_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/payment_rejection_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:4c394018b66da81d9c05",
+      "repository": "chimera-companion",
+      "source": "test/protocols_test.dart",
+      "title": "protocols_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/protocols_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:93bb90c343953776a9b8",
+      "repository": "chimera-companion",
+      "source": "test/sale_admission_test.dart",
+      "title": "sale_admission_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/sale_admission_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:a08400a59c3957acfd86",
+      "repository": "chimera-companion",
+      "source": "test/sale_lifecycle_test.dart",
+      "title": "sale_lifecycle_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/sale_lifecycle_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:e1a910787db658ac30ff",
+      "repository": "chimera-companion",
+      "source": "test/signed_http_authorization_test.dart",
+      "title": "signed_http_authorization_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/signed_http_authorization_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:982ea0973ff6a1d0098b",
+      "repository": "chimera-companion",
+      "source": "test/tcp_transport_test.dart",
+      "title": "tcp_transport_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/tcp_transport_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:289f02048b7503b0f95d",
+      "repository": "chimera-companion",
+      "source": "test/tls_provisioning_test.dart",
+      "title": "tls_provisioning_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/tls_provisioning_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:a148fb322f54831d2670",
+      "repository": "chimera-companion",
+      "source": "test/tremol_password_test.dart",
+      "title": "tremol_password_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/tremol_password_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:9d20bc010714777714c9",
+      "repository": "chimera-companion",
+      "source": "test/two_companion_checkout_test.dart",
+      "title": "two_companion_checkout_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/two_companion_checkout_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:f66127566b27142abf87",
+      "repository": "chimera-companion",
+      "source": "test/viva_connection_test.dart",
+      "title": "viva_connection_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/viva_connection_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:f6cb2b25204d8534ccf5",
+      "repository": "chimera-companion",
+      "source": "test/viva_test.dart",
+      "title": "viva_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/viva_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:00318560aef7f0888467",
+      "repository": "chimera-companion",
+      "source": "test/widget_test.dart",
+      "title": "widget_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/widget_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    }
+  ]
+}

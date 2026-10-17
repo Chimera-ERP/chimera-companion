@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'companion_app_bar.dart';
 
 final debugMessages = ValueNotifier<List<String>>([]);
 void debugLog(String message) {
@@ -18,14 +19,20 @@ class DebugScaffold extends StatelessWidget {
     required this.body,
     this.actions,
     this.showDebug = false,
+    this.busy = false,
   });
   final String title;
   final Widget body;
   final List<Widget>? actions;
   final bool showDebug;
+  final bool busy;
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(title), actions: actions),
+    appBar: CompanionAppBar(
+      title: Text(title),
+      actions: actions ?? [],
+      busy: busy,
+    ),
     body: SafeArea(
       child: Column(
         children: [

@@ -13,8 +13,9 @@ int verifyOperatorAssertion(
   Map<String, dynamic> policy,
   String challenge,
   String origin,
-  int previousCounter,
-) {
+  int previousCounter, {
+  bool verifyCounter = true,
+}) {
   if (assertion['id'] != credential['id'] || policy['origin'] != origin) {
     throw const FormatException('Operator credential or origin mismatch');
   }
@@ -41,7 +42,9 @@ int verifyOperatorAssertion(
     throw const FormatException('WebAuthn RP mismatch');
   }
   final counter = ByteData.sublistView(auth).getUint32(33);
-  if ((previousCounter != 0 || counter != 0) && counter <= previousCounter) {
+  if (verifyCounter &&
+      (previousCounter != 0 || counter != 0) &&
+      counter <= previousCounter) {
     throw const FormatException('Authenticator counter replay');
   }
   final signed = Uint8List.fromList([...auth, ...sha256.convert(client).bytes]);

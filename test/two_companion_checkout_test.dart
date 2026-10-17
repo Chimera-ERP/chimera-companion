@@ -208,7 +208,7 @@ void main() {
   NetworkTestBinding();
   test('signed cash abandonment releases only rejected receipts, including after restart',() async {
     final tls=await TlsFixture.create();
-    FlutterSecureStorage.setMockInitialValues({'local_hardware_v1':jsonEncode({'vivaEnabled':'false'})});
+    FlutterSecureStorage.setMockInitialValues({'local_hardware_v1':jsonEncode({'host':'192.168.1.20','vivaEnabled':'false'})});
     final identity=SigningFixture(29);
     final fiscal=CheckoutPeer(id:'ecr',identity:identity,authority:SigningFixture(27),pos:SigningFixture(28),tls:tls,
       ecr:BridgeFiscalFixture(),terminal:PaymentFixture(CommandOutcome.succeeded));
@@ -245,6 +245,7 @@ void main() {
         final tls = await TlsFixture.create();
         FlutterSecureStorage.setMockInitialValues({
           'local_hardware_v1': jsonEncode({
+            'host': '192.168.1.20',
             'vivaEnabled': 'true',
             'vivaHost': '127.0.0.1',
             'vivaPort': '9564',

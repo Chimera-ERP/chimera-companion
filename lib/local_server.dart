@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'security/offline_session.dart';
+import 'customer_display_stream.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 typedef VerifyTicket = Future<Map<String, dynamic>> Function(String ticket);
 typedef RunHardware =
@@ -31,7 +33,7 @@ class CompanionServer {
   });
   final RunAuthorizedHardware? runAuthorized;
   final Future<void> Function(String)? onAuthorizationError;
-  final Future<void> Function(String,String)? onFailure;
+  final Future<void> Function(String, String)? onFailure;
   final VerifyTicket verify;
   final RunHardware run;
   final OfflineSession? security;
@@ -39,6 +41,7 @@ class CompanionServer {
   bool _executing = false;
   int _active = 0;
   Set<String>? _allowedHosts;
+  final Set<WebSocket> _displaySockets = {};
   int get port => _server!.port;
   bool get running => _server != null;
   Future<void> start({
@@ -60,6 +63,9 @@ class CompanionServer {
   }
 
   Future<void> close() async {
+    for (final socket in _displaySockets.toList()) {
+      await socket.close(WebSocketStatus.goingAway);
+    }
     await _server?.close(force: true);
     _server = null;
   }
@@ -84,9 +90,18 @@ class CompanionServer {
     }
     Future<void> reply(int status, Map<String, Object?> body) async {
       try {
-        if(status>=400) {await onFailure?.call('http_rejected','HTTP $status · ${body['error']??'Local request rejected'}');}
-        else if(['rejected','unknown'].contains(body['outcome'])) {await onFailure?.call('command_${body['outcome']}',body['message'] as String? ?? 'Command not confirmed');}
-      } catch (_) { }
+        if (status >= 400) {
+          await onFailure?.call(
+            'http_rejected',
+            'HTTP $status · ${body['error'] ?? 'Local request rejected'}',
+          );
+        } else if (['rejected', 'unknown'].contains(body['outcome'])) {
+          await onFailure?.call(
+            'command_${body['outcome']}',
+            body['message'] as String? ?? 'Command not confirmed',
+          );
+        }
+      } catch (_) {}
       response.statusCode = status;
       response.headers.contentType = ContentType.json;
       response.write(jsonEncode(body));
@@ -115,6 +130,49 @@ class CompanionServer {
       }
       if (request.method == 'GET' && request.uri.path == '/health') {
         await reply(200, {'service': 'chimera-companion', 'version': 1});
+        return;
+      }
+      if (request.method == 'GET' && request.uri.path == '/customer-display') {
+        // Public template only: no cart data or keys, even on an unpaired LAN.
+        response.headers.contentType = ContentType.html;
+        response.write(
+          await rootBundle.loadString('assets/customer-display/index.html'),
+        );
+        await response.close();
+        return;
+      }
+      if (request.method == 'GET' &&
+          request.uri.path == '/v2/customer-display') {
+        if (security == null ||
+            origin == null ||
+            url?.scheme != 'https' ||
+            url?.origin != origin ||
+            !WebSocketTransformer.isUpgradeRequest(request)) {
+          await reply(403, {
+            'error': 'Secure paired display connection required',
+          });
+          return;
+        }
+        if (_displaySockets.length >= 2) {
+          await reply(429, {'error': 'Display connections busy'});
+          return;
+        }
+        final socket = await WebSocketTransformer.upgrade(request);
+        _displaySockets.add(socket);
+        try {
+          await serveCustomerDisplayStream(socket, origin, security!, (
+            id,
+            payload,
+            expires,
+          ) async {
+            if (runAuthorized == null) {
+              throw StateError('Verified dispatch required');
+            }
+            return runAuthorized!('customerDisplay', id, payload, expires);
+          });
+        } finally {
+          _displaySockets.remove(socket);
+        }
         return;
       }
       if (request.method != 'POST' ||
@@ -159,31 +217,66 @@ class CompanionServer {
         Map<String, dynamic> proof;
         try {
           proof = await session.authorize(body, origin);
-        } on FormatException catch(error) {
-          try {await onAuthorizationError?.call(error.message);} catch (_) { }
+        } on FormatException catch (error) {
+          try {
+            await onAuthorizationError?.call(error.message);
+          } catch (_) {}
           await reply(403, {'error': 'Authorization rejected'});
           return;
         } on TypeError {
-          try {await onAuthorizationError?.call('Invalid authorization request shape');} catch (_) { }
+          try {
+            await onAuthorizationError?.call(
+              'Invalid authorization request shape',
+            );
+          } catch (_) {}
           await reply(400, {'error': 'Invalid authorization request'});
           return;
         }
         try {
           final commandPayload = Map<String, dynamic>.from(proof['payload']);
+          if (proof['operation'] == 'customerDisplay') {
+            commandPayload['posId'] = proof['pos'];
+          }
           // A browser cannot override the ERP-signed checkout policy.
-          if (['fiscalReceipt','saleAuthorize','saleExternalPaymentConfirm','fiscalPolicy'].contains(proof['operation'])) {
+          if ([
+            'fiscalReceipt',
+            'saleAuthorize',
+            'saleExternalPaymentConfirm',
+            'fiscalPolicy',
+          ].contains(proof['operation'])) {
             commandPayload['checkoutPolicy'] = proof['checkoutPolicy'];
           }
-          if(proof['operation']=='saleAuthorize')commandPayload['authorizationExpires']=proof['authorizationExpires'];
-          if (['operatorLogin','operatorLogout'].contains(proof['operation']) &&
+          if (proof['operation'] == 'saleAuthorize') {
+            commandPayload['authorizationExpires'] =
+                proof['authorizationExpires'];
+          }
+          if ([
+                'operatorLogin',
+                'operatorLogout',
+              ].contains(proof['operation']) &&
               commandPayload['expectedOperatorId'] != null &&
               commandPayload['expectedOperatorId'] != proof['operatorId']) {
             await reply(403, {'error': 'Operator changed before command'});
             return;
           }
-          if (['operatorLogin', 'operatorLogout', 'drawerCountStart', 'drawerCountEnd', 'fiscalReceipt','cashDeposit','cashWithdraw','saleAuthorize','salePaymentStart','salePaymentReject','saleAbandon','saleExternalPaymentConfirm','fiscalPolicy','payment'].contains(proof['operation'])) {
+          if ([
+            'operatorLogin',
+            'operatorLogout',
+            'drawerCountStart',
+            'drawerCountEnd',
+            'fiscalReceipt',
+            'cashDeposit',
+            'cashWithdraw',
+            'saleAuthorize',
+            'salePaymentStart',
+            'salePaymentReject',
+            'saleAbandon',
+            'saleExternalPaymentConfirm',
+            'fiscalPolicy',
+            'payment',
+          ].contains(proof['operation'])) {
             commandPayload['operatorName'] = proof['operatorName'];
-            commandPayload['posId']=proof['pos'];
+            commandPayload['posId'] = proof['pos'];
             commandPayload['operatorId'] = proof['operatorId'];
             commandPayload['canResetOperatorReport'] =
                 proof['canResetOperatorReport'];
@@ -218,7 +311,8 @@ class CompanionServer {
           });
         } on FormatException {
           await reply(403, {
-            'error': 'Autorizarea sau datele comenzii nu corespund. Verifică jurnalul înainte de o încercare nouă.',
+            'error':
+                'Autorizarea sau datele comenzii nu corespund. Verifică jurnalul înainte de o încercare nouă.',
           });
         }
         return;

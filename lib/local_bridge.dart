@@ -11,6 +11,9 @@ import 'local_tls.dart';
 import 'connectivity_client.dart';
 import 'tls_provisioning.dart';
 import 'device_credentials.dart';
+import 'customer_display.dart';
+import 'customer_display_bundle.dart';
+import 'package:crypto/crypto.dart';
 import 'erp_commands.dart';
 import 'diagnostic_outbox.dart';
 import 'security/device_identity.dart';
@@ -33,6 +36,7 @@ import 'hardware/viva_connection.dart';
 const companionOperations = [
   'status',
   'history',
+  'customerDisplay',
   'operatorLogin',
   'operatorLogout',
   'drawerCountStart',
@@ -66,13 +70,26 @@ class LocalBridge extends ChangeNotifier {
     _security = security;
   }
   final FiscalDevice Function(Map<String, dynamic>) _deviceFactory;
-  FiscalDevice _configuredDevice(Map<String,dynamic> settings){
-    final host=settings['host'],port=int.tryParse('${settings['port']}');
-    final code=host is String&&port!=null?_security?.loyaltyPaymentCode(host,port):null;
-    return _deviceFactory({...settings,'loyaltyPaymentCode':code});
+  bool _hasEcr(Map<String, dynamic>? settings) =>
+      settings?['host'] is String &&
+      (settings!['host'] as String).trim().isNotEmpty;
+  FiscalDevice _configuredDevice(Map<String, dynamic> settings) {
+    if (!_hasEcr(settings)) {
+      throw StateError('Casa de marcat nu este configurată.');
+    }
+    final host = settings['host'], port = int.tryParse('${settings['port']}');
+    final code = host is String && port != null
+        ? _security?.loyaltyPaymentCode(host, port)
+        : null;
+    return _deviceFactory({...settings, 'loyaltyPaymentCode': code});
   }
-  final PaymentTerminalAdapter Function(Map<String,dynamic>)? paymentFactory;
+
+  final PaymentTerminalAdapter Function(Map<String, dynamic>)? paymentFactory;
   final _executor = HardwareCommandExecutor();
+  final _customerDisplay = CustomerDisplay();
+  CustomerDisplayBundle? _displayBundle;
+  Future<void>? _displaySync;
+  String? _displayError;
   static const _storage = FlutterSecureStorage();
   CompanionServer? _server;
   OfflineSession? _security;
@@ -82,7 +99,7 @@ class LocalBridge extends ChangeNotifier {
   Timer? _erpCommandsTimer;
   ErpCommands? _erpCommands;
   DiagnosticOutbox? _diagnostics;
-  Future<void> Function(String,String)? _errorReporter;
+  Future<void> Function(String, String)? _errorReporter;
   String? _lastHardwareError;
   Future<void>? _maintaining;
   LocalTls? _activeTls;
@@ -212,6 +229,15 @@ class LocalBridge extends ChangeNotifier {
             as Map<String, dynamic>;
     final org = pairing['org'] ?? pairing['org_id'] ?? enrolledClaims['org'];
     if (org is! String) throw StateError('Organization required');
+    _displayBundle = CustomerDisplayBundle(
+      Directory(
+        '${directory.path}/customer-displays/${sha256.convert(utf8.encode('$org:${pairing['location_id']}'))}',
+      ),
+      org: org,
+      location: pairing['location_id'] as String,
+    );
+    await _displayBundle!.restore();
+    await _customerDisplay.useBundle(_displayBundle!.directory);
     final identity = DeviceIdentity();
     final security = OfflineSession(
       file: File('${directory.path}/offline-trust.json'),
@@ -222,29 +248,44 @@ class LocalBridge extends ChangeNotifier {
     );
     await security.restore();
     _security = security;
-    _diagnostics=DiagnosticOutbox(_storage,_erp,scope:'$org:${pairing['device_id']}');
-    _errorReporter=(code,detail) async {
-      await _diagnostics?.add(code,detail);
-      try {await _diagnostics?.flush();} catch (_) { }
+    _diagnostics = DiagnosticOutbox(
+      _storage,
+      _erp,
+      scope: '$org:${pairing['device_id']}',
+    );
+    _errorReporter = (code, detail) async {
+      await _diagnostics?.add(code, detail);
+      try {
+        await _diagnostics?.flush();
+      } catch (_) {}
     };
-    reportCompanionError=_errorReporter;
+    reportCompanionError = _errorReporter;
     _erpCommands = ErpCommands(
       post: _erp,
       verify: security.verifyErp,
       sign: identity.sign,
-      dispatch: (grant, payload) => ['companionDiagnostics','companionRefreshAuthorization'].contains(grant['operations'].single)
+      dispatch: (grant, payload) =>
+          [
+            'companionDiagnostics',
+            'companionRefreshAuthorization',
+          ].contains(grant['operations'].single)
           ? _runCompanionControl(grant)
           : run(
-        (grant['operations'] as List).single as String,
-        grant['commandId'] as String,
-        payload,
-        expectedEndpoint: grant['equipment'] as String,
-        authorizationExpires: DateTime.fromMillisecondsSinceEpoch(
-          (grant['exp'] as int) * 1000,
-        ),
-      ),
+              (grant['operations'] as List).single as String,
+              grant['commandId'] as String,
+              payload,
+              expectedEndpoint: grant['equipment'] as String,
+              authorizationExpires: DateTime.fromMillisecondsSinceEpoch(
+                (grant['exp'] as int) * 1000,
+              ),
+            ),
       recover: (grant, payload) async {
-        if(['companionDiagnostics','companionRefreshAuthorization'].contains(grant['operations'].single))return _runCompanionControl(grant,recover:true);
+        if ([
+          'companionDiagnostics',
+          'companionRefreshAuthorization',
+        ].contains(grant['operations'].single)) {
+          return _runCompanionControl(grant, recover: true);
+        }
         final settings = await _read('local_hardware_v1');
         if (settings == null) {
           return {
@@ -281,12 +322,12 @@ class LocalBridge extends ChangeNotifier {
     final server = CompanionServer(
       security: security,
       onAuthorizationError: (reason) async {
-        await _diagnostics?.add('authorization_rejected',reason);
-        unawaited(_diagnostics?.flush().catchError((_){ }));
+        await _diagnostics?.add('authorization_rejected', reason);
+        unawaited(_diagnostics?.flush().catchError((_) {}));
       },
-      onFailure: (code,detail) async {
-        await _diagnostics?.add(code,detail);
-        unawaited(_diagnostics?.flush().catchError((_){ }));
+      onFailure: (code, detail) async {
+        await _diagnostics?.add(code, detail);
+        unawaited(_diagnostics?.flush().catchError((_) {}));
       },
       runAuthorized: (operation, id, payload, expires) async {
         lastPosRequest = DateTime.now();
@@ -344,7 +385,9 @@ class LocalBridge extends ChangeNotifier {
   Future<void> pollErpCommands() async {
     if (_closed || configurationOpen || busy || _checking) return;
     try {
-      try {await _diagnostics?.flush();} catch (_) { }
+      try {
+        await _diagnostics?.flush();
+      } catch (_) {}
       await _erpCommands?.poll();
     } catch (_) {
       debugLog(
@@ -353,31 +396,59 @@ class LocalBridge extends ChangeNotifier {
     }
   }
 
-  Future<Map<String,Object?>> _companionDiagnostics() async {
+  Future<Map<String, Object?>> _companionDiagnostics() async {
     await refresh();
-    final settings=await _read('local_hardware_v1');
-    Map<String,dynamic>? active,pending;
-    if(settings!=null){
-      final suffix=CommandJournal.fingerprint(_configuredDevice(settings).id,'operatorLogin',{});
-      active=await _read('operator_active_$suffix');pending=await _read('operator_transition_$suffix');
+    final settings = await _read('local_hardware_v1');
+    Map<String, dynamic>? active, pending;
+    if (_hasEcr(settings)) {
+      final suffix = CommandJournal.fingerprint(
+        _configuredDevice(settings!).id,
+        'operatorLogin',
+        {},
+      );
+      active = await _read('operator_active_$suffix');
+      pending = await _read('operator_transition_$suffix');
     }
-    return {'outcome':'succeeded','message':'Diagnostic Companion (fără execuție fiscală)',
-      'diagnosticVersion':1,'snapshot':snapshot,
-      'operator':{for(final name in ['operatorId','operatorName','closed','closingId'])if(active?.containsKey(name)==true)name:active![name],
-        'transitionPending':pending?['transition']!=null},
-      'recentCommands':(await _journal!.recent()).take(20).toList(),
-      'diagnosticOverflow':await _diagnostics?.overflow()??0};
+    return {
+      'outcome': 'succeeded',
+      'message': 'Diagnostic Companion (fără execuție fiscală)',
+      'diagnosticVersion': 1,
+      'snapshot': snapshot,
+      'operator': {
+        for (final name in [
+          'operatorId',
+          'operatorName',
+          'closed',
+          'closingId',
+        ])
+          if (active?.containsKey(name) == true) name: active![name],
+        'transitionPending': pending?['transition'] != null,
+      },
+      'recentCommands': (await _journal!.recent()).take(20).toList(),
+      'diagnosticOverflow': await _diagnostics?.overflow() ?? 0,
+    };
   }
-  Future<Map<String,Object?>> _runCompanionControl(Map<String,dynamic> grant,{bool recover=false}) async {
-    final key='companion_control_${grant['commandId']}';
-    final saved=await _read(key);
-    if(saved!=null)return saved;
-    if(recover)return {'outcome':'unknown','message':'Diagnostic neconfirmat. Nu a fost retrimis.'};
-    if(grant['operations'].single=='companionRefreshAuthorization') {
-      await _security!.updateTrust(await _erp('/api/devices/companion/offline/trust',{}));
+
+  Future<Map<String, Object?>> _runCompanionControl(
+    Map<String, dynamic> grant, {
+    bool recover = false,
+  }) async {
+    final key = 'companion_control_${grant['commandId']}';
+    final saved = await _read(key);
+    if (saved != null) return saved;
+    if (recover) {
+      return {
+        'outcome': 'unknown',
+        'message': 'Diagnostic neconfirmat. Nu a fost retrimis.',
+      };
     }
-    final result=await _companionDiagnostics();
-    await _write(key,Map<String,dynamic>.from(result));
+    if (grant['operations'].single == 'companionRefreshAuthorization') {
+      await _security!.updateTrust(
+        await _erp('/api/devices/companion/offline/trust', {}),
+      );
+    }
+    final result = await _companionDiagnostics();
+    await _write(key, Map<String, dynamic>.from(result));
     return result;
   }
 
@@ -477,15 +548,20 @@ class LocalBridge extends ChangeNotifier {
       if (_security != null) {
         final settings = await _read('local_hardware_v1');
         if (settings != null) {
-          final ecr = _configuredDevice(settings);
           try {
-            await _erp('/api/devices/companion/management/equipment/register', {
-              'kind': 'ecr',
-              'name': ecr.name,
-              'host': ecr.connection.endpoint.host,
-              'port': ecr.connection.endpoint.port,
-              'payment_catalog':settings['paymentCatalog']??[],
-            });
+            if (_hasEcr(settings)) {
+              final ecr = _configuredDevice(settings);
+              await _erp(
+                '/api/devices/companion/management/equipment/register',
+                {
+                  'kind': 'ecr',
+                  'name': ecr.name,
+                  'host': ecr.connection.endpoint.host,
+                  'port': ecr.connection.endpoint.port,
+                  'payment_catalog': settings['paymentCatalog'] ?? [],
+                },
+              );
+            }
             if (settings['vivaEnabled'] == 'true') {
               final viva = vivaEndpoint(
                 settings['vivaHost'] as String? ?? '',
@@ -518,10 +594,85 @@ class LocalBridge extends ChangeNotifier {
       erpConnected = true;
       posActive = result['pos_recently_active'] == true;
       lastPublished = DateTime.now();
+      // Media I/O never blocks basket frames, hardware commands or heartbeat.
+      _displaySync ??= _syncDisplay().whenComplete(() => _displaySync = null);
     } catch (_) {
       erpConnected = false;
     }
     _changed();
+  }
+
+  Future<void> _syncDisplay() async {
+    final bundle = _displayBundle;
+    if (bundle == null) return;
+    try {
+      final response =
+          await _erp('/api/devices/companion/customer-display/sync', {
+            'bundleKey': bundle.key,
+            'revision': bundle.revision,
+            'errorCode': _displayError,
+          });
+      final manifest = response['manifest'];
+      if (manifest == null) {
+        _displayError = null;
+        return;
+      }
+      final changed = await bundle.install(
+        Map<String, dynamic>.from(manifest as Map),
+        _downloadDisplay,
+      );
+      if (changed || _displayError == 'activation_failed') {
+        try {
+          await _customerDisplay.useBundle(bundle.directory);
+        } catch (_) {
+          _displayError = 'activation_failed';
+          return;
+        }
+      }
+      _displayError = null;
+    } catch (error) {
+      _displayError = error is FormatException
+          ? 'invalid_bundle'
+          : 'download_failed';
+      debugLog(
+        'Ecran client: actualizare nereușită; păstrăm ultima versiune offline.',
+      );
+    }
+  }
+
+  Future<List<int>> _downloadDisplay(String path, int limit) async {
+    final pairing = await currentDevicePairing();
+    final base = Uri.parse(pairing['erp_url'] as String);
+    if (base.scheme != 'https') {
+      throw const FormatException('ERP HTTPS required');
+    }
+    final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+    try {
+      final request = await client.getUrl(
+        base.resolve('/api/devices/companion/customer-display/$path'),
+      );
+      request.followRedirects = false;
+      request.headers.set(
+        HttpHeaders.authorizationHeader,
+        'Bearer ${pairing['token']}',
+      );
+      final response = await request.close().timeout(
+        const Duration(seconds: 10),
+      );
+      if (response.statusCode != 200 || response.contentLength > limit) {
+        throw const HttpException('Display download refused');
+      }
+      final bytes = <int>[];
+      await for (final chunk in response.timeout(const Duration(seconds: 15))) {
+        if (bytes.length + chunk.length > limit) {
+          throw const FormatException('Display download exceeds limit');
+        }
+        bytes.addAll(chunk);
+      }
+      return bytes;
+    } finally {
+      client.close(force: true);
+    }
   }
 
   Future<void> refresh() =>
@@ -537,7 +688,7 @@ class LocalBridge extends ChangeNotifier {
     _checking = true;
     try {
       final settings = await _read('local_hardware_v1');
-      if (settings == null) {
+      if (!_hasEcr(settings)) {
         ecr = {
           'state': 'unconfigured',
           'message': 'Configurează casa de marcat',
@@ -546,7 +697,7 @@ class LocalBridge extends ChangeNotifier {
         };
       } else {
         try {
-          final device = _configuredDevice(settings);
+          final device = _configuredDevice(settings!);
           final state = await device.readStatus();
           ecr = {
             'state': state.ready ? 'ready' : 'error',
@@ -560,10 +711,9 @@ class LocalBridge extends ChangeNotifier {
           ecr = {
             ...ecr,
             'state': 'error',
-            'message':
-                error is TremolLanPasswordRequired
-                    ? error.toString()
-                    : 'Casa de marcat este indisponibilă: poate fi oprită sau inaccesibilă. Verifică alimentarea, conexiunea LAN și configurarea.',
+            'message': error is TremolLanPasswordRequired
+                ? error.toString()
+                : 'Casa de marcat este indisponibilă: poate fi oprită sau inaccesibilă. Verifică alimentarea, conexiunea LAN și configurarea.',
           };
         }
       }
@@ -606,12 +756,28 @@ class LocalBridge extends ChangeNotifier {
       _changed();
     }
   }
+
   Future<void> _recordHardwareErrors() async {
-    final signature='${ecr['state']=='error'?ecr['message']:''}|${payment['state']=='error'?payment['message']:''}';
-    if(signature==_lastHardwareError)return;
-    _lastHardwareError=signature;
-    if(ecr['state']=='error') {try {await _diagnostics?.add('ecr_status_error',ecr['message'] as String? ?? 'ECR unavailable');} catch (_) { }}
-    if(payment['state']=='error') {try {await _diagnostics?.add('payment_status_error',payment['message'] as String? ?? 'Payment terminal unavailable');} catch (_) { }}
+    final signature =
+        '${ecr['state'] == 'error' ? ecr['message'] : ''}|${payment['state'] == 'error' ? payment['message'] : ''}';
+    if (signature == _lastHardwareError) return;
+    _lastHardwareError = signature;
+    if (ecr['state'] == 'error') {
+      try {
+        await _diagnostics?.add(
+          'ecr_status_error',
+          ecr['message'] as String? ?? 'ECR unavailable',
+        );
+      } catch (_) {}
+    }
+    if (payment['state'] == 'error') {
+      try {
+        await _diagnostics?.add(
+          'payment_status_error',
+          payment['message'] as String? ?? 'Payment terminal unavailable',
+        );
+      } catch (_) {}
+    }
   }
 
   Future<Map<String, Object?>> run(
@@ -621,12 +787,30 @@ class LocalBridge extends ChangeNotifier {
     String? expectedEndpoint,
     DateTime? authorizationExpires,
   }) async {
+    if (operation == 'customerDisplay') {
+      if (authorizationExpires == null ||
+          !authorizationExpires.isAfter(DateTime.now())) {
+        return {'outcome': 'rejected', 'message': 'Autorizare POS necesară.'};
+      }
+      final display = await _customerDisplay.update(payload);
+      return {
+        'outcome': 'succeeded',
+        'message': 'Stare ecran client',
+        'customerDisplay': display,
+      };
+    }
     if (['status', 'history'].contains(operation)) {
       return _runNow(operation, id, payload);
     }
     final settings = await _read('local_hardware_v1');
     if (settings == null) {
       return {'outcome': 'rejected', 'message': 'Dispozitive neconfigurate'};
+    }
+    if (!['payment', 'paymentTest'].contains(operation) && !_hasEcr(settings)) {
+      return {
+        'outcome': 'rejected',
+        'message': 'Casa de marcat nu este configurată.',
+      };
     }
     final equipment = ['payment', 'paymentTest'].contains(operation)
         ? 'viva:${settings['vivaHost']}:${settings['vivaPort']}'
@@ -709,9 +893,12 @@ class LocalBridge extends ChangeNotifier {
         'locationId': locationId,
         'ecrReady': ecr['state'] == 'ready' && !_executing,
         'capabilities': ecr['capabilities'],
-        'paymentStartProofVersion':1,
-        'saleAdmissionLifecycleVersion':1,
-        'commandRecoveryVersion':1,
+        'paymentStartProofVersion': 1,
+        'saleAdmissionLifecycleVersion': 1,
+        'commandRecoveryVersion': 1,
+        'customerDisplayVersion': 1,
+        'customerDisplayStreamVersion': 1,
+        'customerDisplay': await _customerDisplay.status(),
         'message': ecr['message'],
       };
     }
@@ -722,18 +909,29 @@ class LocalBridge extends ChangeNotifier {
       throw ArgumentError('Unknown operation');
     }
     if (payload.containsKey('recoveryOnly') &&
-        (payload['recoveryOnly'] != true || ![
-          'fiscalReceipt','payment','paymentTest','xReport','zReport',
-          'nonFiscal','cashDeposit','cashWithdraw',
-        ].contains(operation))) {
-      throw ArgumentError('Read-only recovery is not supported for this operation');
+        (payload['recoveryOnly'] != true ||
+            ![
+              'fiscalReceipt',
+              'payment',
+              'paymentTest',
+              'xReport',
+              'zReport',
+              'nonFiscal',
+              'cashDeposit',
+              'cashWithdraw',
+            ].contains(operation))) {
+      throw ArgumentError(
+        'Read-only recovery is not supported for this operation',
+      );
     }
     // A background read must not turn a retry of a confirmed command into a
     // rejection: wait for the read, then let the journal return its result.
     if (_checking) await _refreshing;
     if (busy || configurationOpen) {
       return {
-        'outcome': payload['recoveryOnly'] == true || activeCommand?['id'] == id ? 'unknown' : 'rejected',
+        'outcome': payload['recoveryOnly'] == true || activeCommand?['id'] == id
+            ? 'unknown'
+            : 'rejected',
         'message': 'Companion ocupat. Reîncearcă după verificare.',
       };
     }
@@ -749,7 +947,10 @@ class LocalBridge extends ChangeNotifier {
       }
       final settings = await _read('local_hardware_v1');
       if (settings == null) {
-        return {'outcome': payload['recoveryOnly'] == true ? 'unknown' : 'rejected', 'message': 'Dispozitive neconfigurate'};
+        return {
+          'outcome': payload['recoveryOnly'] == true ? 'unknown' : 'rejected',
+          'message': 'Dispozitive neconfigurate',
+        };
       }
       final journal = _journal;
       if (journal == null) {
@@ -758,165 +959,459 @@ class LocalBridge extends ChangeNotifier {
       final drawerLock = await _read('cash_drawer_count_v1');
       if (operation == 'drawerCountStart' || operation == 'drawerCountEnd') {
         final shift = payload['shiftId'];
-        if (shift is! String || !RegExp(r'^shift_[a-z0-9]+$').hasMatch(shift) || payload['operatorId'] is! String) {
-          return {'outcome': 'rejected', 'message': 'Tură verificată necesară.'};
+        if (shift is! String ||
+            !RegExp(r'^shift_[a-z0-9]+$').hasMatch(shift) ||
+            payload['operatorId'] is! String) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Tură verificată necesară.',
+          };
         }
-        if (drawerLock != null && (drawerLock['shiftId'] != shift || drawerLock['operatorId'] != payload['operatorId'])) {
-          return {'outcome': 'rejected', 'message': 'Alt operator numără sertarul.'};
+        if (drawerLock != null &&
+            (drawerLock['shiftId'] != shift ||
+                drawerLock['operatorId'] != payload['operatorId'])) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Alt operator numără sertarul.',
+          };
         }
         if (operation == 'drawerCountStart') {
-          final deviceId=_configuredDevice(settings).id;
-          final settled=await journal.confirmedReceiptIds(deviceId);
-          for(final entry in (await _storage.readAll()).entries.where((e)=>e.key.startsWith('sale_admission_'))) {
-            final admission=jsonDecode(entry.value);
-            if(admission is! Map||admission['saleId'] is! String)throw const FormatException('Invalid persisted sale admission');
-            if(admission['equipmentId']!=null&&admission['equipmentId']!=deviceId)continue;
-            if(admission['lifecycleVersion']==1&&SaleLifecycle.restore(Map<String,dynamic>.from(admission)).abandoned)continue;
-            if(!settled.contains(admission['saleId'])) {
-              return {'outcome':'rejected','message':'Există o vânzare autorizată nefinalizată. Recuperează plata și bonul înainte de numărare.'};
+          final deviceId = _configuredDevice(settings).id;
+          final settled = await journal.confirmedReceiptIds(deviceId);
+          for (final entry in (await _storage.readAll()).entries.where(
+            (e) => e.key.startsWith('sale_admission_'),
+          )) {
+            final admission = jsonDecode(entry.value);
+            if (admission is! Map || admission['saleId'] is! String) {
+              throw const FormatException('Invalid persisted sale admission');
+            }
+            if (admission['equipmentId'] != null &&
+                admission['equipmentId'] != deviceId) {
+              continue;
+            }
+            if (admission['lifecycleVersion'] == 1 &&
+                SaleLifecycle.restore(
+                  Map<String, dynamic>.from(admission),
+                ).abandoned) {
+              continue;
+            }
+            if (!settled.contains(admission['saleId'])) {
+              return {
+                'outcome': 'rejected',
+                'message':
+                    'Există o vânzare autorizată nefinalizată. Recuperează plata și bonul înainte de numărare.',
+              };
             }
           }
-          if (await journal.hasUnresolvedDrawerEffects(_configuredDevice(settings).id)) {
-            return {'outcome':'rejected','message':'O vânzare sau o mișcare de numerar are rezultat neconfirmat. Verifică jurnalul înainte de numărare.'};
+          if (await journal.hasUnresolvedDrawerEffects(
+            _configuredDevice(settings).id,
+          )) {
+            return {
+              'outcome': 'rejected',
+              'message':
+                  'O vânzare sau o mișcare de numerar are rezultat neconfirmat. Verifică jurnalul înainte de numărare.',
+            };
           }
-          await _storage.write(key:'cash_drawer_count_v1', value:jsonEncode({'shiftId':shift,'operatorId':payload['operatorId']}));
+          await _storage.write(
+            key: 'cash_drawer_count_v1',
+            value: jsonEncode({
+              'shiftId': shift,
+              'operatorId': payload['operatorId'],
+            }),
+          );
         } else {
-          await _storage.delete(key:'cash_drawer_count_v1');
+          await _storage.delete(key: 'cash_drawer_count_v1');
         }
-        return {'outcome':'succeeded','message':operation == 'drawerCountStart' ? 'Sertar rezervat pentru numărare.' : 'Sertar eliberat.'};
+        return {
+          'outcome': 'succeeded',
+          'message': operation == 'drawerCountStart'
+              ? 'Sertar rezervat pentru numărare.'
+              : 'Sertar eliberat.',
+        };
       }
       final device = operation == 'payment' || operation == 'paymentTest'
           ? null
           : _configuredDevice(settings);
-      if(operation=='fiscalPolicy') {
-        if(_security==null||payload['operatorId'] is! String||payload['posId'] is! String)throw const FormatException('Verified operator required for fiscal policy');
-        final state=await device!.readStatus();
-        final stateKey='daily_z_${CommandJournal.fingerprint(device.id,'dailyZ',{})}';
-        final clock=DailyZPolicy(await _read(stateKey));
-        final decision=clock.evaluate(payload['checkoutPolicy'] is Map?payload['checkoutPolicy']:null,DateTime.now().toUtc(),hardwareNonZero:state.ready?state.details['dailyReportNonZero'] as bool?:null);
-        await _write(stateKey,clock.toJson());
-        return {'outcome':'succeeded','fiscalPolicy':decision,'message':state.description};
-      }
-      if(operation=='saleExternalPaymentConfirm') {
-        if(_security==null||payload['saleId'] is! String||payload['amountMinor'] is! int||payload['currency'] is! String||payload['confirmed']!=true||
-          payload['checkoutPolicy'] is! Map||payload['checkoutPolicy']['card_mode']!='external') {
-          throw const FormatException('Signed external-card policy and explicit confirmation required');
+      if (operation == 'fiscalPolicy') {
+        if (_security == null ||
+            payload['operatorId'] is! String ||
+            payload['posId'] is! String) {
+          throw const FormatException(
+            'Verified operator required for fiscal policy',
+          );
         }
-        final admissionKey='sale_admission_${CommandJournal.fingerprint(device!.id,'saleAuthorize',{'id':payload['saleId']})}';
-        final admission=await _read(admissionKey);
-        if(admission==null||admission['lifecycleVersion']!=1||admission['paymentMethod']!='card'||admission['org']!=_security!.org||
-          admission['location']!=locationId||admission['receiptCompanion']!=companionId||admission['equipmentId']!=device.id||
-          admission['operatorId']!=payload['operatorId']||admission['posId']!=payload['posId']) {
+        final state = await device!.readStatus();
+        final stateKey =
+            'daily_z_${CommandJournal.fingerprint(device.id, 'dailyZ', {})}';
+        final clock = DailyZPolicy(await _read(stateKey));
+        final decision = clock.evaluate(
+          payload['checkoutPolicy'] is Map ? payload['checkoutPolicy'] : null,
+          DateTime.now().toUtc(),
+          hardwareNonZero: state.ready
+              ? state.details['dailyReportNonZero'] as bool?
+              : null,
+        );
+        await _write(stateKey, clock.toJson());
+        return {
+          'outcome': 'succeeded',
+          'fiscalPolicy': decision,
+          'message': state.description,
+        };
+      }
+      if (operation == 'saleExternalPaymentConfirm') {
+        if (_security == null ||
+            payload['saleId'] is! String ||
+            payload['amountMinor'] is! int ||
+            payload['currency'] is! String ||
+            payload['confirmed'] != true ||
+            payload['checkoutPolicy'] is! Map ||
+            payload['checkoutPolicy']['card_mode'] != 'external') {
+          throw const FormatException(
+            'Signed external-card policy and explicit confirmation required',
+          );
+        }
+        final admissionKey =
+            'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': payload['saleId']})}';
+        final admission = await _read(admissionKey);
+        if (admission == null ||
+            admission['lifecycleVersion'] != 1 ||
+            admission['paymentMethod'] != 'card' ||
+            admission['org'] != _security!.org ||
+            admission['location'] != locationId ||
+            admission['receiptCompanion'] != companionId ||
+            admission['equipmentId'] != device.id ||
+            admission['operatorId'] != payload['operatorId'] ||
+            admission['posId'] != payload['posId']) {
           throw const FormatException('Matching external-card sale required');
         }
-        final confirmed=SaleLifecycle.restore(admission).confirmExternal(amountMinor:payload['amountMinor'],currency:payload['currency']).toJson();
-        await _write(admissionKey,confirmed);
-        return {'outcome':'succeeded','saleAdmission':confirmed,'message':'Plată confirmată de operator; nu este dovadă bancară electronică.'};
+        final confirmed = SaleLifecycle.restore(admission)
+            .confirmExternal(
+              amountMinor: payload['amountMinor'],
+              currency: payload['currency'],
+            )
+            .toJson();
+        await _write(admissionKey, confirmed);
+        return {
+          'outcome': 'succeeded',
+          'saleAdmission': confirmed,
+          'message':
+              'Plată confirmată de operator; nu este dovadă bancară electronică.',
+        };
       }
-      if(operation=='saleAbandon') {
-        if(_security==null||payload['saleId'] is! String)throw const FormatException('Verified sale identity required');
-        final admissionKey='sale_admission_${CommandJournal.fingerprint(device!.id,'saleAuthorize',{'id':payload['saleId']})}';
-        final admission=await _read(admissionKey);
-        if(admission==null||admission['lifecycleVersion']!=1||admission['org']!=_security!.org||admission['location']!=locationId||
-          admission['receiptCompanion']!=companionId||admission['equipmentId']!=device.id||admission['operatorId']!=payload['operatorId']||admission['posId']!=payload['posId']) {
-          throw const FormatException('Matching versioned sale identity required');
+      if (operation == 'saleAbandon') {
+        if (_security == null || payload['saleId'] is! String) {
+          throw const FormatException('Verified sale identity required');
         }
-        if(await journal.containsCommandId(payload['saleId'])&&
-          !(['cash','loyalty'].contains(admission['paymentMethod'])&&['admitted','abandoned'].contains(admission['phase'])&&
-            await journal.hasRejectedReceipt(payload['saleId'],device.id))) {
-          return {'outcome':'rejected','message':'Bonul are deja o comandă în jurnal. Recuperează rezultatul; nu anula vânzarea.'};
+        final admissionKey =
+            'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': payload['saleId']})}';
+        final admission = await _read(admissionKey);
+        if (admission == null ||
+            admission['lifecycleVersion'] != 1 ||
+            admission['org'] != _security!.org ||
+            admission['location'] != locationId ||
+            admission['receiptCompanion'] != companionId ||
+            admission['equipmentId'] != device.id ||
+            admission['operatorId'] != payload['operatorId'] ||
+            admission['posId'] != payload['posId']) {
+          throw const FormatException(
+            'Matching versioned sale identity required',
+          );
         }
-        final cancelled=SaleLifecycle.restore(admission).abandon().toJson();
-        await _write(admissionKey,cancelled);
-        return {'outcome':'succeeded','saleAdmission':cancelled,'message':'Vânzarea neplătită a fost anulată.'};
+        if (await journal.containsCommandId(payload['saleId']) &&
+            !(['cash', 'loyalty'].contains(admission['paymentMethod']) &&
+                ['admitted', 'abandoned'].contains(admission['phase']) &&
+                await journal.hasRejectedReceipt(
+                  payload['saleId'],
+                  device.id,
+                ))) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Bonul are deja o comandă în jurnal. Recuperează rezultatul; nu anula vânzarea.',
+          };
+        }
+        final cancelled = SaleLifecycle.restore(admission).abandon().toJson();
+        await _write(admissionKey, cancelled);
+        return {
+          'outcome': 'succeeded',
+          'saleAdmission': cancelled,
+          'message': 'Vânzarea neplătită a fost anulată.',
+        };
       }
-      if(operation=='salePaymentReject') {
-        if(_security==null||payload['saleId'] is! String||payload['paymentRejectionProof'] is! Map)throw const FormatException('Signed terminal rejection required');
-        final admissionKey='sale_admission_${CommandJournal.fingerprint(device!.id,'saleAuthorize',{'id':payload['saleId']})}';
-        final admission=await _read(admissionKey);
-        if(admission==null||admission['lifecycleVersion']!=1||admission['org']!=_security!.org||admission['location']!=locationId||
-          admission['receiptCompanion']!=companionId||admission['equipmentId']!=device.id||admission['operatorId']!=payload['operatorId']||admission['posId']!=payload['posId']) {
+      if (operation == 'salePaymentReject') {
+        if (_security == null ||
+            payload['saleId'] is! String ||
+            payload['paymentRejectionProof'] is! Map) {
+          throw const FormatException('Signed terminal rejection required');
+        }
+        final admissionKey =
+            'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': payload['saleId']})}';
+        final admission = await _read(admissionKey);
+        if (admission == null ||
+            admission['lifecycleVersion'] != 1 ||
+            admission['org'] != _security!.org ||
+            admission['location'] != locationId ||
+            admission['receiptCompanion'] != companionId ||
+            admission['equipmentId'] != device.id ||
+            admission['operatorId'] != payload['operatorId'] ||
+            admission['posId'] != payload['posId']) {
           throw const FormatException('Matching sale identity required');
         }
-        final proof=Map<String,dynamic>.from(payload['paymentRejectionProof']);
-        if(admission['phase']=='abandoned'&&jsonEncode(admission['paymentRejectionProof'])==jsonEncode(proof)) {
-          return {'outcome':'succeeded','saleAdmission':admission,'message':'Refuzul plății a fost înregistrat anterior.'};
+        final proof = Map<String, dynamic>.from(
+          payload['paymentRejectionProof'],
+        );
+        if (admission['phase'] == 'abandoned' &&
+            jsonEncode(admission['paymentRejectionProof']) ==
+                jsonEncode(proof)) {
+          return {
+            'outcome': 'succeeded',
+            'saleAdmission': admission,
+            'message': 'Refuzul plății a fost înregistrat anterior.',
+          };
         }
-        if(await journal.containsCommandId(payload['saleId']))throw StateError('Fiscal command already exists; recover its original result');
-        _security!.verifyRecordedPaymentRejection(proof,admission);
-        final cancelled=SaleLifecycle.restore(admission).rejectPayment().toJson()..['paymentRejectionProof']=proof;
-        await _write(admissionKey,cancelled);
-        return {'outcome':'succeeded','saleAdmission':cancelled,'message':'Refuzul terminalului înregistrat; vânzarea nu a fost fiscalizată.'};
+        if (await journal.containsCommandId(payload['saleId'])) {
+          throw StateError(
+            'Fiscal command already exists; recover its original result',
+          );
+        }
+        _security!.verifyRecordedPaymentRejection(proof, admission);
+        final cancelled = SaleLifecycle.restore(
+          admission,
+        ).rejectPayment().toJson()..['paymentRejectionProof'] = proof;
+        await _write(admissionKey, cancelled);
+        return {
+          'outcome': 'succeeded',
+          'saleAdmission': cancelled,
+          'message':
+              'Refuzul terminalului înregistrat; vânzarea nu a fost fiscalizată.',
+        };
       }
-      if(operation=='salePaymentStart') {
-        if(_security==null||companionId==null||payload['saleId'] is! String||payload['paymentCompanion'] is! String||
-          !_security!.trustedPaymentCompanion(payload['paymentCompanion'])) {
+      if (operation == 'salePaymentStart') {
+        if (_security == null ||
+            companionId == null ||
+            payload['saleId'] is! String ||
+            payload['paymentCompanion'] is! String ||
+            !_security!.trustedPaymentCompanion(payload['paymentCompanion'])) {
           throw const FormatException('Trusted payment Companion required');
         }
-        final admissionKey='sale_admission_${CommandJournal.fingerprint(device!.id,'saleAuthorize',{'id':payload['saleId']})}';
-        final admission=await _read(admissionKey);
-        if(admission==null||admission['lifecycleVersion']!=1||admission['operatorId']!=payload['operatorId']||admission['posId']!=payload['posId']||
-          admission['org']!=_security!.org||admission['location']!=locationId||admission['receiptCompanion']!=companionId||admission['equipmentId']!=device.id||
-          admission['expiresAt'] is! int||admission['expiresAt']<=DateTime.now().millisecondsSinceEpoch||payload['amountMinor'] is! int||payload['currency'] is! String) {
-          throw const FormatException('Matching versioned sale admission required');
+        final admissionKey =
+            'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': payload['saleId']})}';
+        final admission = await _read(admissionKey);
+        if (admission == null ||
+            admission['lifecycleVersion'] != 1 ||
+            admission['operatorId'] != payload['operatorId'] ||
+            admission['posId'] != payload['posId'] ||
+            admission['org'] != _security!.org ||
+            admission['location'] != locationId ||
+            admission['receiptCompanion'] != companionId ||
+            admission['equipmentId'] != device.id ||
+            admission['expiresAt'] is! int ||
+            admission['expiresAt'] <= DateTime.now().millisecondsSinceEpoch ||
+            payload['amountMinor'] is! int ||
+            payload['currency'] is! String) {
+          throw const FormatException(
+            'Matching versioned sale admission required',
+          );
         }
-        if(drawerLock!=null)return {'outcome':'rejected','message':'Sertarul este în numărare.'};
-        if(admission['phase']!='payment_started'&&await journal.hasUnresolvedDrawerEffects(device.id))return {'outcome':'rejected','message':'Există operații neconfirmate pe casă. Recuperează rezultatul înainte de o plată nouă.'};
-        final state=SaleLifecycle.restore(admission).beginPayment(commandId:id,companion:payload['paymentCompanion'],amountMinor:payload['amountMinor'],currency:payload['currency']);
+        if (drawerLock != null) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Sertarul este în numărare.',
+          };
+        }
+        if (admission['phase'] != 'payment_started' &&
+            await journal.hasUnresolvedDrawerEffects(device.id)) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Există operații neconfirmate pe casă. Recuperează rezultatul înainte de o plată nouă.',
+          };
+        }
+        final state = SaleLifecycle.restore(admission).beginPayment(
+          commandId: id,
+          companion: payload['paymentCompanion'],
+          amountMinor: payload['amountMinor'],
+          currency: payload['currency'],
+        );
         // Persist the possibly-started phase before returning a signature that
         // the terminal can use. Response loss must never restore unpaid state.
-        await _write(admissionKey,state.toJson());
-        return {'outcome':'succeeded','paymentAdmission':state.toJson(),'message':'Începerea plății autorizată.'};
+        await _write(admissionKey, state.toJson());
+        return {
+          'outcome': 'succeeded',
+          'paymentAdmission': state.toJson(),
+          'message': 'Începerea plății autorizată.',
+        };
       }
-      if(operation=='saleAuthorize') {
-        if(_security==null||companionId==null||locationId==null||payload['operatorId'] is! String||payload['posId'] is! String) {
-          return {'outcome':'rejected','message':'Înrolare și operator verificat necesare pentru autorizarea vânzării.'};
+      if (operation == 'saleAuthorize') {
+        if (_security == null ||
+            companionId == null ||
+            locationId == null ||
+            payload['operatorId'] is! String ||
+            payload['posId'] is! String) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Înrolare și operator verificat necesare pentru autorizarea vânzării.',
+          };
         }
-        if(drawerLock!=null)return {'outcome':'rejected','message':'Sertarul este în numărare.'};
-        if(payload['receiptJson'] is! String||(payload['receiptJson'] as String).length>100000||payload['saleId']!=id||payload['authorizationExpires'] is! int)throw const FormatException('Invalid sale admission');
-        if(payload['authorizationExpires']<=DateTime.now().millisecondsSinceEpoch)return {'outcome':'rejected','message':'Autorizarea operatorului a expirat.'};
-        final facts=saleFacts(Map<String,dynamic>.from(jsonDecode(payload['receiptJson'])));
-        if(facts['documentMode']=='nonfiscal'&&(payload['checkoutPolicy'] is! Map||payload['checkoutPolicy']['allow_nonfiscal_sales']!=true))return {'outcome':'rejected','message':'Politica ERP nu permite documente nefiscale.'};
-        if(facts['settlementVersion']==2&&(facts['payments'] as List).any((p)=>p['method']=='loyalty')){
-          final source=Map<String,dynamic>.from(jsonDecode(payload['receiptJson']));
-          if(source['fidelityAuthorization'] is! String)throw const FormatException('Customer coins approval required');
-          _security!.verifyFidelity(source['fidelityAuthorization'],id,{...source,'posId':payload['posId'],'operatorId':payload['operatorId']});
+        if (drawerLock != null) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Sertarul este în numărare.',
+          };
         }
-        final hash=saleFactsHash(facts);
-        final admissionKey='sale_admission_${CommandJournal.fingerprint(device!.id,'saleAuthorize',{'id':id})}';
-        final existing=await _read(admissionKey);
-        if(existing!=null) {
-          if(existing['lifecycleVersion']==1&&SaleLifecycle.restore(existing).abandoned)return {'outcome':'rejected','message':'Autorizarea vânzării a fost anulată. Folosește o vânzare nouă.'};
-          if(existing['receiptHash']!=hash||existing['operatorId']!=payload['operatorId']||existing['posId']!=payload['posId'])throw const FormatException('Sale admission identity or payload changed');
-          if(existing['expiresAt']<=DateTime.now().millisecondsSinceEpoch)return {'outcome':'rejected','message':'Autorizarea vânzării a expirat.'};
-          return {'outcome':'succeeded','saleAdmission':existing,'message':'Vânzare autorizată anterior.'};
+        if (payload['receiptJson'] is! String ||
+            (payload['receiptJson'] as String).length > 100000 ||
+            payload['saleId'] != id ||
+            payload['authorizationExpires'] is! int) {
+          throw const FormatException('Invalid sale admission');
         }
-        if(await journal.containsCommandId(id))return {'outcome':'rejected','message':'Identificatorul vânzării există deja în jurnal. Recuperează operația originală; nu începe o plată nouă.'};
-        if(!await device.operatorReady(payload,_read))return {'outcome':'rejected','message':device.operatorReadinessMessage};
-        if(facts['cui']!=null&&!device.capabilities.contains('buyerTaxId'))return {'outcome':'rejected','message':'Modelul nu permite CUI fiscal.'};
-        final state=await device.readStatus();
-        if(!state.ready)return {'outcome':'rejected','message':state.description};
-        final stateKey='daily_z_${CommandJournal.fingerprint(device.id,'dailyZ',{})}';
-        final clock=DailyZPolicy(await _read(stateKey)),now=DateTime.now().toUtc();
-        final decision=clock.evaluate(payload['checkoutPolicy'] is Map?payload['checkoutPolicy']:null,now,hardwareNonZero:state.details['dailyReportNonZero'] as bool?);
-        await _write(stateKey,clock.toJson());
-        if(decision['blocked']==true)return {'outcome':'rejected','message':decision['uncertain']==true?'Starea fiscală trebuie verificată înainte de vânzare.':'Termenul Z este depășit. Emite raportul Z înainte de o vânzare nouă.','fiscalPolicy':decision};
-        final admission={'org':_security?.org,'location':locationId,'saleId':id,'receiptHash':hash,'amountMinor':facts['paymentMethod']=='card'?receiptCardAmount(facts):facts['totalMinor'],'currency':facts['currency'],'operatorId':payload['operatorId'],'posId':payload['posId'],'receiptCompanion':companionId,'startedAt':now.toIso8601String(),'expiresAt':payload['authorizationExpires']};
-        admission['equipmentId']=device.id;
-        admission['paymentMethod']=facts['paymentMethod'];
-        final issued=SaleLifecycle.issue(admission,requestedVersion:payload['lifecycleVersion']);
-        await _write(admissionKey,issued);
-        return {'outcome':'succeeded','saleAdmission':issued,'fiscalPolicy':decision,'message':'Vânzare autorizată.'};
+        if (payload['authorizationExpires'] <=
+            DateTime.now().millisecondsSinceEpoch) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Autorizarea operatorului a expirat.',
+          };
+        }
+        final facts = saleFacts(
+          Map<String, dynamic>.from(jsonDecode(payload['receiptJson'])),
+        );
+        if (facts['documentMode'] == 'nonfiscal' &&
+            (payload['checkoutPolicy'] is! Map ||
+                payload['checkoutPolicy']['allow_nonfiscal_sales'] != true)) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Politica ERP nu permite documente nefiscale.',
+          };
+        }
+        if (facts['settlementVersion'] == 2 &&
+            (facts['payments'] as List).any((p) => p['method'] == 'loyalty')) {
+          final source = Map<String, dynamic>.from(
+            jsonDecode(payload['receiptJson']),
+          );
+          if (source['fidelityAuthorization'] is! String) {
+            throw const FormatException('Customer coins approval required');
+          }
+          _security!.verifyFidelity(source['fidelityAuthorization'], id, {
+            ...source,
+            'posId': payload['posId'],
+            'operatorId': payload['operatorId'],
+          });
+        }
+        final hash = saleFactsHash(facts);
+        final admissionKey =
+            'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': id})}';
+        final existing = await _read(admissionKey);
+        if (existing != null) {
+          if (existing['lifecycleVersion'] == 1 &&
+              SaleLifecycle.restore(existing).abandoned) {
+            return {
+              'outcome': 'rejected',
+              'message':
+                  'Autorizarea vânzării a fost anulată. Folosește o vânzare nouă.',
+            };
+          }
+          if (existing['receiptHash'] != hash ||
+              existing['operatorId'] != payload['operatorId'] ||
+              existing['posId'] != payload['posId']) {
+            throw const FormatException(
+              'Sale admission identity or payload changed',
+            );
+          }
+          if (existing['expiresAt'] <= DateTime.now().millisecondsSinceEpoch) {
+            return {
+              'outcome': 'rejected',
+              'message': 'Autorizarea vânzării a expirat.',
+            };
+          }
+          return {
+            'outcome': 'succeeded',
+            'saleAdmission': existing,
+            'message': 'Vânzare autorizată anterior.',
+          };
+        }
+        if (await journal.containsCommandId(id)) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Identificatorul vânzării există deja în jurnal. Recuperează operația originală; nu începe o plată nouă.',
+          };
+        }
+        if (!await device.operatorReady(payload, _read)) {
+          return {
+            'outcome': 'rejected',
+            'message': device.operatorReadinessMessage,
+          };
+        }
+        if (facts['cui'] != null &&
+            !device.capabilities.contains('buyerTaxId')) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Modelul nu permite CUI fiscal.',
+          };
+        }
+        final state = await device.readStatus();
+        if (!state.ready) {
+          return {'outcome': 'rejected', 'message': state.description};
+        }
+        final stateKey =
+            'daily_z_${CommandJournal.fingerprint(device.id, 'dailyZ', {})}';
+        final clock = DailyZPolicy(await _read(stateKey)),
+            now = DateTime.now().toUtc();
+        final decision = clock.evaluate(
+          payload['checkoutPolicy'] is Map ? payload['checkoutPolicy'] : null,
+          now,
+          hardwareNonZero: state.details['dailyReportNonZero'] as bool?,
+        );
+        await _write(stateKey, clock.toJson());
+        if (decision['blocked'] == true) {
+          return {
+            'outcome': 'rejected',
+            'message': decision['uncertain'] == true
+                ? 'Starea fiscală trebuie verificată înainte de vânzare.'
+                : 'Termenul Z este depășit. Emite raportul Z înainte de o vânzare nouă.',
+            'fiscalPolicy': decision,
+          };
+        }
+        final admission = {
+          'org': _security?.org,
+          'location': locationId,
+          'saleId': id,
+          'receiptHash': hash,
+          'amountMinor': facts['paymentMethod'] == 'card'
+              ? receiptCardAmount(facts)
+              : facts['totalMinor'],
+          'currency': facts['currency'],
+          'operatorId': payload['operatorId'],
+          'posId': payload['posId'],
+          'receiptCompanion': companionId,
+          'startedAt': now.toIso8601String(),
+          'expiresAt': payload['authorizationExpires'],
+        };
+        admission['equipmentId'] = device.id;
+        admission['paymentMethod'] = facts['paymentMethod'];
+        final issued = SaleLifecycle.issue(
+          admission,
+          requestedVersion: payload['lifecycleVersion'],
+        );
+        await _write(admissionKey, issued);
+        return {
+          'outcome': 'succeeded',
+          'saleAdmission': issued,
+          'fiscalPolicy': decision,
+          'message': 'Vânzare autorizată.',
+        };
       }
       // Recover a durable result before live preflight reads. A changed ECR
       // operator or unreachable peripheral must not hide a completed command.
       // Operator changes have their own recoverable multi-phase journal.
-      if (device != null && !['operatorLogin','operatorLogout'].contains(operation)) {
+      if (device != null &&
+          !['operatorLogin', 'operatorLogout'].contains(operation)) {
         final recorded = await journal.lookup(
           id: id,
           deviceId: device.id,
           operation: operation,
-          payload: Map<String,dynamic>.from(payload)..remove('checkoutPolicy'),
+          payload: Map<String, dynamic>.from(payload)..remove('checkoutPolicy'),
         );
         if (recorded != null) {
           return {
@@ -929,34 +1424,67 @@ class LocalBridge extends ChangeNotifier {
         }
       }
       if (device != null && payload['recoveryOnly'] == true) {
-        return {'outcome':'unknown','message':'Rezultatul comenzii nu există în jurnal. Recuperarea nu execută o comandă nouă.'};
+        return {
+          'outcome': 'unknown',
+          'message':
+              'Rezultatul comenzii nu există în jurnal. Recuperarea nu execută o comandă nouă.',
+        };
       }
-      if (drawerLock != null && ['fiscalReceipt','payment','paymentTest','cashDeposit','cashWithdraw'].contains(operation)) {
-        return {'outcome':'rejected','message':'Sertarul este în numărare. Așteaptă închiderea turei.'};
+      if (drawerLock != null &&
+          [
+            'fiscalReceipt',
+            'payment',
+            'paymentTest',
+            'cashDeposit',
+            'cashWithdraw',
+          ].contains(operation)) {
+        return {
+          'outcome': 'rejected',
+          'message': 'Sertarul este în numărare. Așteaptă închiderea turei.',
+        };
       }
       if (operation == 'operatorLogin' || operation == 'operatorLogout') {
         return await device!.setOperator(
-          commandId: id, identity: payload,
-          ending: operation == 'operatorLogout', journal: journal, read: _read,
-          write: (key, value) => _storage.write(key: key, value: jsonEncode(value)),
+          commandId: id,
+          identity: payload,
+          ending: operation == 'operatorLogout',
+          journal: journal,
+          read: _read,
+          write: (key, value) =>
+              _storage.write(key: key, value: jsonEncode(value)),
         );
       }
       if (operation == 'rawEcr') {
         if (device!.connection.model == FiscalModel.datecsDp25) {
-          return {'outcome': 'rejected', 'message': 'Consola raw disponibilă momentan pentru Tremol.'};
+          return {
+            'outcome': 'rejected',
+            'message': 'Consola raw disponibilă momentan pentru Tremol.',
+          };
         }
         HardwareResult? rawResponse;
-        final result = await journal.execute(id: id, deviceId: device.id,
-          operation: operation, payload: payload,
+        final result = await journal.execute(
+          id: id,
+          deviceId: device.id,
+          operation: operation,
+          payload: payload,
           dispatch: () async {
             rawResponse = await TremolAdapter(device.connection).rawCommand(
-              payload['command'] as int, (payload['data'] as List).cast<int>());
+              payload['command'] as int,
+              (payload['data'] as List).cast<int>(),
+            );
             // Raw responses can contain programmed passwords. Keep them only
             // in the local console, never in persistent/shared command history.
-            return HardwareResult(rawResponse!.outcome,
-              message: 'Comandă service ${payload['command']}; răspuns disponibil numai în consola locală.');
-          });
-        return {'outcome': result.outcome.name, 'message': rawResponse?.message ?? result.message};
+            return HardwareResult(
+              rawResponse!.outcome,
+              message:
+                  'Comandă service ${payload['command']}; răspuns disponibil numai în consola locală.',
+            );
+          },
+        );
+        return {
+          'outcome': result.outcome.name,
+          'message': rawResponse?.message ?? result.message,
+        };
       }
       List<String>? lines;
       if (operation == 'nonFiscal') {
@@ -968,44 +1496,93 @@ class LocalBridge extends ChangeNotifier {
         validateNonFiscalLines(lines);
       }
       FiscalReceipt? receipt;
-      Map<String,dynamic>? receiptAdmission;
+      Map<String, dynamic>? receiptAdmission;
       CashMovementRequest? movement;
-      if(['cashDeposit','cashWithdraw'].contains(operation)) {
-        if(await journal.hasUnresolvedDrawerEffects(device!.id)) {
-          return {'outcome':'rejected','message':'Există o operație de numerar sau un bon neconfirmat. Verifică rezultatul înainte de o mișcare nouă.'};
+      if (['cashDeposit', 'cashWithdraw'].contains(operation)) {
+        if (await journal.hasUnresolvedDrawerEffects(device!.id)) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Există o operație de numerar sau un bon neconfirmat. Verifică rezultatul înainte de o mișcare nouă.',
+          };
         }
-        if(payload['amountMinor'] is! int || payload['reason'] is! String || payload['currency']!='RON')throw ArgumentError('Invalid cash movement');
-        if(!await device.operatorReady(payload,_read))return {'outcome':'rejected','message':device.operatorReadinessMessage};
-        movement=CashMovementRequest(commandId:id,amountMinor:payload['amountMinor'],withdrawal:operation=='cashWithdraw',reason:payload['reason']);
+        if (payload['amountMinor'] is! int ||
+            payload['reason'] is! String ||
+            payload['currency'] != 'RON') {
+          throw ArgumentError('Invalid cash movement');
+        }
+        if (!await device.operatorReady(payload, _read)) {
+          return {
+            'outcome': 'rejected',
+            'message': device.operatorReadinessMessage,
+          };
+        }
+        movement = CashMovementRequest(
+          commandId: id,
+          amountMinor: payload['amountMinor'],
+          withdrawal: operation == 'cashWithdraw',
+          reason: payload['reason'],
+        );
       }
       if (operation == 'fiscalReceipt') {
-        if(payload['documentMode']=='nonfiscal'&&(payload['checkoutPolicy'] is! Map||payload['checkoutPolicy']['allow_nonfiscal_sales']!=true))throw const FormatException('ERP does not permit non fiscal sales');
-        if(payload['settlementVersion']==2&&(payload['payments'] as List).any((p)=>p['method']=='loyalty')){if(payload['fidelityAuthorization'] is! String)throw const FormatException('Coins approval required');_security!.verifyFidelity(payload['fidelityAuthorization'],id,payload);}
-        if(_security==null||payload['saleAuthorization'] is! Map)throw const FormatException('Sale authorization required before receipt');
-        receiptAdmission=_security!.verifySaleAuthorization(Map<String,dynamic>.from(payload['saleAuthorization']),payload,fiscalReceipt:true);
-        if(receiptAdmission['lifecycleVersion']==1) {
-          final admissionKey='sale_admission_${CommandJournal.fingerprint(device!.id,'saleAuthorize',{'id':payload['saleId']})}';
-          final stored=await _read(admissionKey);
-          if(stored==null||stored['receiptHash']!=receiptAdmission['receiptHash'])throw const FormatException('Sale admission missing or mismatched');
-          SaleLifecycle.restore(stored).requireReceiptState(
-            paymentMethod:payload['paymentMethod'] as String,
-            external:payload['externalPaymentConfirmation']!=null,
-            paymentCommandId:payload['paymentCommandId'] as String?,
+        if (payload['documentMode'] == 'nonfiscal' &&
+            (payload['checkoutPolicy'] is! Map ||
+                payload['checkoutPolicy']['allow_nonfiscal_sales'] != true)) {
+          throw const FormatException('ERP does not permit non fiscal sales');
+        }
+        if (payload['settlementVersion'] == 2 &&
+            (payload['payments'] as List).any(
+              (p) => p['method'] == 'loyalty',
+            )) {
+          if (payload['fidelityAuthorization'] is! String) {
+            throw const FormatException('Coins approval required');
+          }
+          _security!.verifyFidelity(
+            payload['fidelityAuthorization'],
+            id,
+            payload,
           );
         }
-          if (!await device!.operatorReady(payload, _read)) {
-            return {
-              'outcome': 'rejected',
-              'message':
-                  'Numele operatorului ECR nu corespunde operatorului POS. Reautentifică operatorul și rezolvă sincronizarea înainte de bon.',
-            };
+        if (_security == null || payload['saleAuthorization'] is! Map) {
+          throw const FormatException(
+            'Sale authorization required before receipt',
+          );
+        }
+        receiptAdmission = _security!.verifySaleAuthorization(
+          Map<String, dynamic>.from(payload['saleAuthorization']),
+          payload,
+          fiscalReceipt: true,
+        );
+        if (receiptAdmission['lifecycleVersion'] == 1) {
+          final admissionKey =
+              'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': payload['saleId']})}';
+          final stored = await _read(admissionKey);
+          if (stored == null ||
+              stored['receiptHash'] != receiptAdmission['receiptHash']) {
+            throw const FormatException('Sale admission missing or mismatched');
           }
+          SaleLifecycle.restore(stored).requireReceiptState(
+            paymentMethod: payload['paymentMethod'] as String,
+            external: payload['externalPaymentConfirmation'] != null,
+            paymentCommandId: payload['paymentCommandId'] as String?,
+          );
+        }
+        if (!await device!.operatorReady(payload, _read)) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Numele operatorului ECR nu corespunde operatorului POS. Reautentifică operatorul și rezolvă sincronizarea înainte de bon.',
+          };
+        }
         receipt = await _receipt(id, payload, settings, journal);
       }
       if (operation == 'paymentTest' &&
           (payload['amountMinor'] != 500 ||
               payload['currency'] != 'RON' ||
-              payload.keys.any((key) => !['amountMinor','currency','recoveryOnly'].contains(key)))) {
+              payload.keys.any(
+                (key) =>
+                    !['amountMinor', 'currency', 'recoveryOnly'].contains(key),
+              ))) {
         throw ArgumentError('Invalid payment test');
       }
       PaymentRequest? paymentRequest;
@@ -1035,47 +1612,85 @@ class LocalBridge extends ChangeNotifier {
         );
       }
       HardwareResult result;
-      Map<String,Object?>? recordedPaymentRejection;
+      Map<String, Object?>? recordedPaymentRejection;
       if (paymentRequest != null) {
-        if (settings['vivaEnabled'] != 'true' && payload['recoveryOnly'] != true) {
+        if (settings['vivaEnabled'] != 'true' &&
+            payload['recoveryOnly'] != true) {
           return {'outcome': 'rejected', 'message': 'Viva dezactivat'};
         }
         final endpoint = vivaEndpoint(
           settings['vivaHost'] as String? ?? '',
           settings['vivaPort'] as String? ?? '',
         );
-        final adapter=paymentFactory?.call(settings)??VivaAdapter(PinnedTerminalTransport(endpoint,settings['vivaPin'] as String? ?? ''));
+        final adapter =
+            paymentFactory?.call(settings) ??
+            VivaAdapter(
+              PinnedTerminalTransport(
+                endpoint,
+                settings['vivaPin'] as String? ?? '',
+              ),
+            );
         if (payload['recoveryOnly'] == true) {
-          final recorded = await journal.lookup(id: id,
-            deviceId: '${endpoint.host}:${endpoint.port}', operation: 'payment',
-            payload: {'vendor':adapter.vendor,'amountMinor':paymentRequest.amountMinor,'currency':paymentRequest.currency,
+          final recorded = await journal.lookup(
+            id: id,
+            deviceId: '${endpoint.host}:${endpoint.port}',
+            operation: 'payment',
+            payload: {
+              'vendor': adapter.vendor,
+              'amountMinor': paymentRequest.amountMinor,
+              'currency': paymentRequest.currency,
               if (operation == 'payment') ...{
-                'saleId':payload['saleId'],'receiptCommandId':payload['receiptCommandId'],
-                'receiptCompanionId':payload['receiptCompanionId'],
+                'saleId': payload['saleId'],
+                'receiptCommandId': payload['receiptCommandId'],
+                'receiptCompanionId': payload['receiptCompanionId'],
               },
-            });
+            },
+          );
           if (recorded == null) {
-            return {'outcome':'unknown','message':'Rezultatul plății nu există în jurnal. Recuperarea nu inițiază o plată nouă.'};
+            return {
+              'outcome': 'unknown',
+              'message':
+                  'Rezultatul plății nu există în jurnal. Recuperarea nu inițiază o plată nouă.',
+            };
           }
           return {
-            'outcome':recorded.outcome.name,'journalFound':true,
-            'reference':recorded.reference,'message':recorded.message,
-            if (operation == 'payment' && recorded.outcome == CommandOutcome.rejected &&
-                await journal.hasRecordedPaymentRejection(id:id,
-                  deviceId:'${endpoint.host}:${endpoint.port}',payload:{
-                    'vendor':adapter.vendor,'amountMinor':payload['amountMinor'],'currency':payload['currency'],
-                    'saleId':payload['saleId'],'receiptCommandId':payload['receiptCommandId'],
-                    'receiptCompanionId':payload['receiptCompanionId'],
-                  }))
-              'paymentRejection':{
-                'org':_security!.org,'location':locationId,'saleId':payload['saleId'],
-                'paymentCommandId':id,'receiptCompanion':payload['receiptCompanionId'],
-                'amountMinor':payload['amountMinor'],'currency':payload['currency'],
-                'outcome':'rejected','source':'terminal_journal',
+            'outcome': recorded.outcome.name,
+            'journalFound': true,
+            'reference': recorded.reference,
+            'message': recorded.message,
+            if (operation == 'payment' &&
+                recorded.outcome == CommandOutcome.rejected &&
+                await journal.hasRecordedPaymentRejection(
+                  id: id,
+                  deviceId: '${endpoint.host}:${endpoint.port}',
+                  payload: {
+                    'vendor': adapter.vendor,
+                    'amountMinor': payload['amountMinor'],
+                    'currency': payload['currency'],
+                    'saleId': payload['saleId'],
+                    'receiptCommandId': payload['receiptCommandId'],
+                    'receiptCompanionId': payload['receiptCompanionId'],
+                  },
+                ))
+              'paymentRejection': {
+                'org': _security!.org,
+                'location': locationId,
+                'saleId': payload['saleId'],
+                'paymentCommandId': id,
+                'receiptCompanion': payload['receiptCompanionId'],
+                'amountMinor': payload['amountMinor'],
+                'currency': payload['currency'],
+                'outcome': 'rejected',
+                'source': 'terminal_journal',
               },
-            if (operation == 'payment' && recorded.outcome == CommandOutcome.succeeded &&
+            if (operation == 'payment' &&
+                recorded.outcome == CommandOutcome.succeeded &&
                 recorded.reference?.isNotEmpty == true)
-              ...await _security!.paymentEvidence(id,payload,recorded.reference!),
+              ...await _security!.paymentEvidence(
+                id,
+                payload,
+                recorded.reference!,
+              ),
           };
         }
         result = await HardwareRuntime(journal).payment(
@@ -1083,15 +1698,40 @@ class LocalBridge extends ChangeNotifier {
           adapter,
           paymentRequest,
           recoveryOnly: payload['recoveryOnly'] == true,
-          preflight: operation=='payment' ? () async {
-            if(payload['recoveryOnly']==true)throw const FormatException('No recorded payment; recovery never starts a new payment');
-            if(payload['saleAuthorization'] is! Map)throw const FormatException('Sale authorization required before payment');
-            final admission=_security!.verifySaleAuthorization(Map<String,dynamic>.from(payload['saleAuthorization']),payload,fiscalReceipt:false);
-            if(admission['lifecycleVersion']==1) {
-              if(payload['paymentAuthorization'] is! Map)throw const FormatException('Payment-start authorization required');
-              _security!.verifyPaymentStart(Map<String,dynamic>.from(payload['paymentAuthorization']),payload,id,admission['receiptHash']);
-            }
-          } : null,
+          preflight: operation == 'payment'
+              ? () async {
+                  if (payload['recoveryOnly'] == true) {
+                    throw const FormatException(
+                      'No recorded payment; recovery never starts a new payment',
+                    );
+                  }
+                  if (payload['saleAuthorization'] is! Map) {
+                    throw const FormatException(
+                      'Sale authorization required before payment',
+                    );
+                  }
+                  final admission = _security!.verifySaleAuthorization(
+                    Map<String, dynamic>.from(payload['saleAuthorization']),
+                    payload,
+                    fiscalReceipt: false,
+                  );
+                  if (admission['lifecycleVersion'] == 1) {
+                    if (payload['paymentAuthorization'] is! Map) {
+                      throw const FormatException(
+                        'Payment-start authorization required',
+                      );
+                    }
+                    _security!.verifyPaymentStart(
+                      Map<String, dynamic>.from(
+                        payload['paymentAuthorization'],
+                      ),
+                      payload,
+                      id,
+                      admission['receiptHash'],
+                    );
+                  }
+                }
+              : null,
           binding: operation == 'payment'
               ? {
                   'saleId': payload['saleId'],
@@ -1100,18 +1740,30 @@ class LocalBridge extends ChangeNotifier {
                 }
               : const {},
         );
-        if(operation=='payment'&&result.outcome==CommandOutcome.rejected&&
-          await journal.hasRecordedPaymentRejection(id:id,deviceId:'${endpoint.host}:${endpoint.port}',payload:{
-            'vendor':adapter.vendor,'amountMinor':payload['amountMinor'],'currency':payload['currency'],
-            'saleId':payload['saleId'],'receiptCommandId':payload['receiptCommandId'],
-            'receiptCompanionId':payload['receiptCompanionId'],
-          })) {
-          recordedPaymentRejection={
-            'org':_security!.org,'location':locationId,
-            'saleId':payload['saleId'],'paymentCommandId':id,
-            'receiptCompanion':payload['receiptCompanionId'],
-            'amountMinor':payload['amountMinor'],'currency':payload['currency'],
-            'outcome':'rejected','source':'terminal_journal',
+        if (operation == 'payment' &&
+            result.outcome == CommandOutcome.rejected &&
+            await journal.hasRecordedPaymentRejection(
+              id: id,
+              deviceId: '${endpoint.host}:${endpoint.port}',
+              payload: {
+                'vendor': adapter.vendor,
+                'amountMinor': payload['amountMinor'],
+                'currency': payload['currency'],
+                'saleId': payload['saleId'],
+                'receiptCommandId': payload['receiptCommandId'],
+                'receiptCompanionId': payload['receiptCompanionId'],
+              },
+            )) {
+          recordedPaymentRejection = {
+            'org': _security!.org,
+            'location': locationId,
+            'saleId': payload['saleId'],
+            'paymentCommandId': id,
+            'receiptCompanion': payload['receiptCompanionId'],
+            'amountMinor': payload['amountMinor'],
+            'currency': payload['currency'],
+            'outcome': 'rejected',
+            'source': 'terminal_journal',
           };
         }
       } else {
@@ -1119,7 +1771,7 @@ class LocalBridge extends ChangeNotifier {
           id: id,
           deviceId: device!.id,
           operation: operation,
-          payload: Map<String,dynamic>.from(payload)..remove('checkoutPolicy'),
+          payload: Map<String, dynamic>.from(payload)..remove('checkoutPolicy'),
           dispatch: () => switch (operation) {
             'nonFiscal' => device.nonFiscal(lines!),
             'fiscalReceipt' => device.receipt(receipt!),
@@ -1129,10 +1781,18 @@ class LocalBridge extends ChangeNotifier {
             _ => throw ArgumentError('Unsupported operation'),
           },
         );
-        if(operation=='fiscalReceipt'&&payload['documentMode']!='nonfiscal'&&result.outcome!=CommandOutcome.rejected) {
-          final stateKey='daily_z_${CommandJournal.fingerprint(device.id,'dailyZ',{})}';
-          final clock=DailyZPolicy(await _read(stateKey)),now=DateTime.now().toUtc();
-          clock.receiptObserved(DateTime.parse(receiptAdmission!['startedAt']),now);await _write(stateKey,clock.toJson());
+        if (operation == 'fiscalReceipt' &&
+            payload['documentMode'] != 'nonfiscal' &&
+            result.outcome != CommandOutcome.rejected) {
+          final stateKey =
+              'daily_z_${CommandJournal.fingerprint(device.id, 'dailyZ', {})}';
+          final clock = DailyZPolicy(await _read(stateKey)),
+              now = DateTime.now().toUtc();
+          clock.receiptObserved(
+            DateTime.parse(receiptAdmission!['startedAt']),
+            now,
+          );
+          await _write(stateKey, clock.toJson());
         }
       }
       debugLog('$operation · ${result.outcome.name} · ${result.message}');
@@ -1141,7 +1801,9 @@ class LocalBridge extends ChangeNotifier {
         'reference': result.reference,
         ...result.fiscalIdentity,
         'message': result.message,
-        ...(recordedPaymentRejection==null ? <String,Object?>{} : {'paymentRejection':recordedPaymentRejection}),
+        ...(recordedPaymentRejection == null
+            ? <String, Object?>{}
+            : {'paymentRejection': recordedPaymentRejection}),
         if (operation == 'payment' &&
             result.outcome == CommandOutcome.succeeded &&
             result.reference?.isNotEmpty == true)
@@ -1165,7 +1827,7 @@ class LocalBridge extends ChangeNotifier {
     if (payload['lines'] is! List ||
         payload['totalMinor'] is! int ||
         payload['currency'] != 'RON' ||
-        !['cash', 'card','loyalty'].contains(payload['paymentMethod'])) {
+        !['cash', 'card', 'loyalty'].contains(payload['paymentMethod'])) {
       throw ArgumentError('Invalid receipt');
     }
     String? reference;
@@ -1209,7 +1871,8 @@ class LocalBridge extends ChangeNotifier {
     }
     final sourceLines = payload['lines'] as List;
     Map<String, double>? vatRates;
-    if (payload['documentMode']!='nonfiscal'&&sourceLines.any((line) => line is Map && line['vatRate'] is num)) {
+    if (payload['documentMode'] != 'nonfiscal' &&
+        sourceLines.any((line) => line is Map && line['vatRate'] is num)) {
       vatRates = await _configuredDevice(settings).readVatRates();
     }
     final lines = sourceLines.map((line) {
@@ -1226,7 +1889,9 @@ class LocalBridge extends ChangeNotifier {
         quantityDecimal: line['quantity'] as String,
         unitPriceMinor: line['unitPriceMinor'] as int,
         grossTotalMinor: line['grossTotalMinor'] as int,
-        vatGroup: payload['documentMode']=='nonfiscal'?'nonfiscal':line['vatRate'] is num
+        vatGroup: payload['documentMode'] == 'nonfiscal'
+            ? 'nonfiscal'
+            : line['vatRate'] is num
             ? (vatRates!.entries
                       .where(
                         (entry) =>
@@ -1250,14 +1915,23 @@ class LocalBridge extends ChangeNotifier {
       confirmedPaymentReference: reference,
       cui: payload['cui'] as String?,
       claimToken: payload['claimToken'] as String?,
-      documentMode:payload['documentMode'] as String? ?? 'fiscal',
-      payments:payload['settlementVersion']==2?(payload['payments'] as List).map((p)=>ReceiptPayment(method:FiscalPaymentMethod.values.byName(p['method']),amountMinor:p['amountMinor'])).toList():null,
+      documentMode: payload['documentMode'] as String? ?? 'fiscal',
+      payments: payload['settlementVersion'] == 2
+          ? (payload['payments'] as List)
+                .map(
+                  (p) => ReceiptPayment(
+                    method: FiscalPaymentMethod.values.byName(p['method']),
+                    amountMinor: p['amountMinor'],
+                  ),
+                )
+                .toList()
+          : null,
     );
   }
 
   Future<void> close() async {
     _closed = true;
-    if(reportCompanionError==_errorReporter)reportCompanionError=null;
+    if (reportCompanionError == _errorReporter) reportCompanionError = null;
     _timer?.cancel();
     _connectivityTimer?.cancel();
     _erpCommandsTimer?.cancel();
@@ -1265,5 +1939,7 @@ class LocalBridge extends ChangeNotifier {
     await _server?.close();
     _server = null;
   }
-  Future<void> _write(String key,Map<String,dynamic> value)=>_storage.write(key:key,value:jsonEncode(value));
+
+  Future<void> _write(String key, Map<String, dynamic> value) =>
+      _storage.write(key: key, value: jsonEncode(value));
 }
