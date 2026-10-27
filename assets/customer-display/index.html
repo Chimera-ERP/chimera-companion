@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="ro"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src https: blob: data:; media-src https: blob:; base-uri 'none'; form-action 'none'">
+<title>Ecran client</title><style>
+:root{color-scheme:dark;--bg:#111713;--panel:#1b241e;--ink:#f5f7ef;--muted:#acb9ae;--accent:#c3ed92;--line:#ffffff20;font-family:system-ui,-apple-system,sans-serif}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink)}body.light{color-scheme:light;--bg:#f5f5ef;--panel:#fff;--ink:#17211b;--muted:#5e6f62;--line:#00000018}
+main{height:100vh;height:100dvh;display:grid;grid-template-columns:minmax(0,.85fr) minmax(0,1.15fr);gap:32px;padding:32px;overflow:hidden}
+.hero{min-width:0;min-height:0;position:relative;display:flex;flex-direction:column;justify-content:space-between;overflow:hidden;border-radius:18px;padding:28px;background:var(--panel)}
+.identity{position:relative;z-index:2;display:flex;align-items:center;gap:16px;font-size:clamp(18px,2.4vw,30px);font-weight:600;letter-spacing:-.03em;overflow-wrap:anywhere}.identity img{max-width:160px;max-height:80px;object-fit:contain}.identity img[hidden]{display:none}.mark{width:12px;height:12px;background:var(--accent);border-radius:50%;flex:none}
+.welcome{position:relative;z-index:2;max-width:600px;padding-top:28px}.welcome h1{font-weight:550;font-size:clamp(28px,4.8vw,64px);line-height:1.08;letter-spacing:-.045em;margin:0 0 18px;overflow-wrap:anywhere}.welcome p{font-size:clamp(16px,2vw,24px);line-height:1.4;margin:0;color:var(--muted);overflow-wrap:anywhere}
+#media{position:absolute;inset:0;display:none;width:100%;height:100%;object-fit:cover;background:var(--panel)}.has-media #media{display:block}.has-media:after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,#0007,transparent 40%,#000b)}.has-media .identity,.has-media .welcome{color:#fff}.has-media .welcome p{color:#ffffffe0}
+#countdown{position:absolute;right:12px;bottom:12px;z-index:3;width:44px;height:44px;display:grid;place-items:center;border-radius:50%;background:#111d;color:#fff;font-size:14px;font-weight:600;font-variant-numeric:tabular-nums;pointer-events:none}#countdown[hidden]{display:none}#countdown svg{position:absolute;inset:0;width:100%;height:100%;transform:rotate(-90deg)}#countdown circle{fill:none;stroke:#ffffff40;stroke-width:3}#countdown .remaining{stroke:#fff;stroke-dasharray:100;stroke-dashoffset:0;animation:remaining-time var(--duration) linear forwards;animation-play-state:paused}@keyframes remaining-time{to{stroke-dashoffset:100}}body:not(.idle).receipt #countdown{display:none}.has-media .welcome{padding-right:48px}@media(prefers-reduced-motion:reduce){#countdown .remaining{animation:none;stroke-dashoffset:var(--elapsed,0)}}
+.order{min-width:0;min-height:0;display:flex;flex-direction:column;padding:18px 8px}.order header{display:flex;justify-content:space-between;gap:14px;border-bottom:1px solid var(--line);padding-bottom:24px;align-items:baseline}h2{margin:0;font-size:clamp(23px,2.7vw,36px);font-weight:550;letter-spacing:-.035em}#count{color:var(--muted);white-space:nowrap}.lines{flex:1;overflow:auto;scrollbar-width:thin;min-height:0}.row{display:grid;grid-template-columns:38px minmax(0,1fr) auto;gap:12px;padding:20px 0;border-bottom:1px solid var(--line);font-size:clamp(18px,2.2vw,28px)}.qty{color:var(--muted);font-size:.8em;padding-top:4px}.name{overflow-wrap:anywhere}.amount{white-space:nowrap;font-variant-numeric:tabular-nums}.free{font-size:.75em;color:var(--accent)}.total{display:flex;justify-content:space-between;align-items:baseline;gap:16px;border-top:1px solid var(--line);padding-top:24px;font-size:24px}.total strong{font-size:clamp(36px,5vw,64px);font-weight:600;letter-spacing:-.04em}.total small{color:var(--muted);font-size:.35em;margin-left:8px;letter-spacing:0}.light .free{color:#365627}
+body.idle main{grid-template-columns:1fr}body.idle .order{display:none}body.idle .hero{padding:clamp(28px,5vw,64px)}body.idle .welcome h1{font-size:clamp(32px,6vw,80px)}body:not(.idle).receipt main{grid-template-columns:1fr;grid-template-rows:auto minmax(0,1fr)}body:not(.idle).receipt .hero{background:none;padding:0;border-radius:0}body:not(.idle).receipt .welcome,body:not(.idle).receipt #media,body:not(.idle).receipt .hero:after{display:none}
+body:not(.idle).banner main{grid-template-columns:1fr;grid-template-rows:130px minmax(0,1fr)}body:not(.idle).banner .hero{flex-direction:row;align-items:center;gap:24px;padding:20px 28px}body:not(.idle).banner .welcome{padding:0;max-width:50%}body:not(.idle).banner .welcome h1{font-size:24px;margin:0}body:not(.idle).banner .welcome p{display:none}
+@media(max-width:700px){main{gap:16px;padding:20px;grid-template-columns:1fr;grid-template-rows:100px minmax(0,1fr)}.hero{padding:18px;justify-content:center}.hero .welcome{display:none}.identity{font-size:22px}.identity img{max-height:55px}.order{padding:0}.order header{padding-bottom:16px}.row{padding:14px 0;font-size:18px}.total{padding-top:16px;font-size:20px}.total strong{font-size:40px}body.idle main{grid-template-rows:1fr}body.idle .hero{justify-content:space-between}body.idle .welcome{display:block}body:not(.idle).banner main{grid-template-rows:100px minmax(0,1fr)}}
+/* Accent remains visible with a logo; text uses a contrasting foreground. */
+.identity img{flex-shrink:1;min-width:0;max-width:min(160px,35vw)}.identity #brand{min-width:0}.mark{border:1px solid var(--ink)}
+.total{border-top:3px solid var(--accent)}.total strong{background:var(--accent);color:var(--on-accent);padding:4px 12px;border-radius:8px;outline:1px solid var(--line)}.total small{color:inherit}.free,.light .free{color:var(--accent-ink)}
+@media(max-width:700px){body:not(.idle).banner .welcome{display:block;min-width:0}body:not(.idle).banner .welcome h1{font-size:18px}body:not(.idle).banner .hero{gap:12px;padding:12px}.total strong{font-size:clamp(22px,7vw,40px)}}
+@media(max-height:520px){main{gap:16px;padding:16px}.hero{padding:20px}.welcome h1{font-size:28px}.identity img{max-height:45px}.order{padding:0}.order header{padding-bottom:12px}.row{padding:12px 0;font-size:18px}.total{padding-top:12px}.total strong{font-size:36px}}
+</style></head><body class="idle split"><main><section class="hero" id="hero"><img id="media" alt=""><div class="identity"><img id="logo" alt="Logo" hidden><span class="mark" id="mark"></span><span id="brand">Bine ai venit</span></div><div class="welcome"><h1 id="headline">Comanda ta,<br>pregătită cu grijă.</h1><p id="message"></p></div></section><section class="order"><header><h2>Comanda ta</h2><span id="count"></span></header><div id="lines" class="lines"></div><footer class="total"><span>Total</span><strong><span id="total">0,00</span><small id="currency">RON</small></strong></footer></section></main>
+<script>
+// Public rendering contract only: no credentials, native bridge or price calculation.
+let rowsKey='',playlistKey='',slides=[],slideIndex=0,slideTimer=null,countdownTimer=null,remainingMs=0,deadline=0,durationMs=0,clockEnabled=true,currentPresentation={};
+const byId=id=>document.getElementById(id);
+const countdown=document.createElement('div');countdown.id='countdown';countdown.hidden=true;countdown.setAttribute('role','timer');countdown.setAttribute('aria-live','off');
+countdown.innerHTML='<svg viewBox="0 0 44 44" aria-hidden="true"><circle cx="22" cy="22" r="18"/><circle class="remaining" cx="22" cy="22" r="18" pathLength="100"/></svg><span></span>';byId('hero').append(countdown);
+function updateCountdown(){
+ const remaining=deadline?Math.max(0,deadline-Date.now()):remainingMs,seconds=Math.ceil(remaining/1000);
+ countdown.querySelector('span').textContent=seconds+'s';countdown.setAttribute('aria-label','Timp rămas: '+seconds+' secunde');countdown.style.setProperty('--elapsed',String(durationMs?100*(1-remaining/durationMs):0));
+}
+function stopSlideClock(){
+ if(deadline)remainingMs=Math.max(0,deadline-Date.now());deadline=0;clearTimeout(slideTimer);clearInterval(countdownTimer);slideTimer=null;countdownTimer=null;countdown.querySelector('.remaining').style.animationPlayState='paused';
+}
+function startSlideClock(){
+ updateCountdown();if(!clockEnabled||!slides.length||remainingMs<=0)return;
+ deadline=Date.now()+remainingMs;countdown.querySelector('.remaining').style.animationPlayState='running';
+ countdownTimer=setInterval(updateCountdown,1000);
+ slideTimer=setTimeout(()=>{stopSlideClock();slideIndex=(slideIndex+1)%slides.length;showSlide()},remainingMs);
+}
+const safeUrl=value=>{if(typeof value==='string'&&/^data:image\/(png|jpeg|gif|webp);base64,[a-z0-9+/=]+$/i.test(value))return value;try{const u=new URL(value);return ['https:','blob:'].includes(u.protocol)?u.href:''}catch{return ''}};
+const hex=value=>typeof value==='string'&&/^#[a-f0-9]{6}$/i.test(value);
+const luminance=color=>{const rgb=color.slice(1).match(/../g).map(v=>parseInt(v,16)/255).map(v=>v<=.04045?v/12.92:Math.pow((v+.055)/1.055,2.4));return rgb[0]*.2126+rgb[1]*.7152+rgb[2]*.0722};
+const contrast=(a,b)=>(Math.max(luminance(a),luminance(b))+.05)/(Math.min(luminance(a),luminance(b))+.05);
+const foreground=background=>contrast('#ffffff',background)>=contrast('#000000',background)?'#ffffff':'#000000';
+byId('logo').addEventListener('error',()=>{byId('logo').hidden=true});
+function showSlide(){
+ stopSlideClock();const slide=slides[slideIndex];const src=slide&&slide.kind==='image'?safeUrl(slide.src):'';
+ byId('hero').classList.toggle('has-media',!!src);
+ if(src){if(byId('media').getAttribute('src')!==src)byId('media').src=src;byId('media').style.objectFit=slide.fit==='contain'?'contain':'cover';byId('media').alt=slide.caption||'';}else byId('media').removeAttribute('src');
+ byId('headline').textContent=slide?.caption||currentPresentation.message||'Comanda ta, pregătită cu grijă.';
+ byId('message').textContent=slide?.caption?(currentPresentation.message||''):'';
+ durationMs=remainingMs=src?Math.max(5,Math.min(120,slide.durationSeconds||10))*1000:0;countdown.hidden=!src;
+ countdown.style.setProperty('--duration',durationMs+'ms');const ring=countdown.querySelector('.remaining');ring.style.animation='none';void ring.getBoundingClientRect();ring.style.animation='';startSlideClock();
+}
+byId('media').addEventListener('error',()=>{byId('hero').classList.remove('has-media');countdown.hidden=true});
+function render(snapshot){
+ const value=snapshot||{},p=value.presentation||{},lines=Array.isArray(value.lines)?value.lines:[],nextIdle=!lines.length;
+ currentPresentation=p;document.body.className=(nextIdle?'idle ':'')+(p.theme==='light'?'light ':'')+(['split','receipt','banner'].includes(p.layout)?p.layout:'split');
+ const style=document.body.style,background=hex(p.backgroundColor)?p.backgroundColor:null,base=background||(p.theme==='light'?'#f5f5ef':'#111713'),accent=hex(p.accent)?p.accent:'#c3ed92';
+ for(const name of ['--bg','--panel','--ink','--muted','--line'])style.removeProperty(name);
+ if(background){const ink=foreground(background);style.setProperty('--bg',background);style.setProperty('--panel',background);style.setProperty('--ink',ink);style.setProperty('--muted',ink);style.setProperty('--line',ink+'40')}
+ style.setProperty('--accent',accent);style.setProperty('--on-accent',foreground(accent));style.setProperty('--accent-ink',contrast(accent,base)>=4.5?accent:foreground(base));
+ byId('brand').textContent=p.title||'Bine ai venit';const candidate=safeUrl(p.logoUrl),logo=candidate.startsWith('blob:')?'':candidate,node=byId('logo');
+ byId('mark').hidden=false;
+ if(!logo){node.hidden=true;node.removeAttribute('src')}else if(node.getAttribute('src')!==logo){node.hidden=false;node.src=logo}
+ const nextSlides=Array.isArray(p.playlist)?p.playlist.filter(s=>s.kind==='image'&&safeUrl(s.src)).slice(0,10):[];
+ const nextClockEnabled=nextIdle||p.layout!=='receipt';
+ const key=JSON.stringify(nextSlides);if(key!==playlistKey){playlistKey=key;slides=nextSlides;slideIndex=0;clockEnabled=nextClockEnabled;showSlide()}else if(clockEnabled!==nextClockEnabled){stopSlideClock();clockEnabled=nextClockEnabled;startSlideClock()}
+ updateCountdown();
+ byId('headline').textContent=slides[slideIndex]?.caption||p.message||'Comanda ta, pregătită cu grijă.';byId('message').textContent=slides[slideIndex]?.caption?(p.message||''):'';
+ const number=new Intl.NumberFormat('ro-RO',{minimumFractionDigits:2,maximumFractionDigits:2}),qty=new Intl.NumberFormat('ro-RO',{maximumFractionDigits:6});
+ byId('total').textContent=number.format((value.totalMinor||0)/100);byId('currency').textContent=value.currency||'RON';byId('count').textContent=lines.length?lines.length+' '+(lines.length===1?'produs':'produse'):'';
+ const nextRows=JSON.stringify(lines);if(nextRows===rowsKey)return;rowsKey=nextRows;const container=byId('lines');container.replaceChildren();
+ for(const item of lines){const row=document.createElement('div');row.className='row';for(const [className,text] of [['qty',qty.format(item.quantity)+'×'],['name',item.name],['amount'+(item.totalMinor===0?' free':''),item.totalMinor===0?'Din partea casei':number.format(item.totalMinor/100)]]){const node=document.createElement('span');node.className=className;node.textContent=text;row.append(node)}container.append(row)}container.scrollTop=container.scrollHeight;
+}
+window.addEventListener('chimera:customer-display',event=>render(event.detail));
+// Sandboxed ERP preview. It cannot call native services; only its parent can update it.
+window.addEventListener('message',event=>{if(event.source===window.parent&&window.parent!==window&&event.data?.type==='chimera:preview')render(event.data.snapshot)});
+render(window.chimeraCustomerDisplay||null);
+</script></body></html>

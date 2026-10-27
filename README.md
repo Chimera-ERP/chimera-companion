@@ -6,6 +6,9 @@ Unified local API for Tremol RO, Datecs MX/legacy ROU and Viva Local Terminal.
 Includes PIN enrollment, a setup wizard, responsive status dashboard, command
 journal, non-fiscal/X/Z actions (Z requires confirmation), and heartbeat to Chimera
 for POS visibility. Android keeps the local API running with a foreground service.
+After a successful configured start, Android resumes it after boot/unlock and APK
+updates (0.1.30+32). The customer display restores its cached publication offline;
+the main activity does not need to open and no fiscal/payment command is replayed.
 
 Fiscal/payment APIs use minor-unit amounts and durable, payload-bound command IDs.
 Unknown outcomes are never blindly resent. Production checkout orchestration,

@@ -1,10 +1,131 @@
+import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:chimera_companion/connection_status.dart';
 import 'package:chimera_companion/main.dart';
+import 'package:chimera_companion/customer_display.dart';
+import 'package:chimera_companion/customer_display_page.dart';
+import 'package:chimera_companion/scale_page.dart';
 
 void main() {
+  Future<void> capture(WidgetTester tester, String name) async {
+    if (!const bool.fromEnvironment('CAPTURE_HOME_UI')) return;
+    await tester.runAsync(() async {
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byType(RepaintBoundary).first,
+      );
+      final image = await boundary.toImage();
+      final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+      await Directory('.quality-receipts').create(recursive: true);
+      await File(
+        '.quality-receipts/scale-home-$name.png',
+      ).writeAsBytes(bytes!.buffer.asUint8List());
+      image.dispose();
+    });
+  }
+
+  setUpAll(() async {
+    if (!const bool.fromEnvironment('CAPTURE_HOME_UI')) return;
+    final font = FontLoader('packages/forui/Inter')
+      ..addFont(rootBundle.load('packages/forui/assets/fonts/inter/Inter.ttf'));
+    await font.load();
+  });
+  testWidgets('scale opens from home in shared wide and narrow detail', (
+    tester,
+  ) async {
+    FlutterSecureStorage.setMockInitialValues({});
+    tester.view.physicalSize = const Size(1280, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        builder: (_, child) =>
+            FTheme(data: FTheme.neutral.dark.touch, child: child!),
+        theme: FTheme.neutral.dark.touch.toApproximateMaterialTheme(),
+        home: const RepaintBoundary(child: CompanionHome()),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await capture(tester, 'wide');
+    await tester.tap(find.text('Cântar'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<ScalePage>(find.byType(ScalePage)).embedded, true);
+    expect(find.byType(Scaffold), findsOneWidget);
+    expect(find.text('POS'), findsOneWidget);
+    await tester.tap(find.text('Bluetooth'));
+    await tester.pumpAndSettle();
+    expect(find.text('Caută cântar'), findsOneWidget);
+    await capture(tester, 'detail-wide');
+    tester.view.physicalSize = const Size(390, 844);
+    await tester.pumpAndSettle();
+    expect(find.text('POS'), findsNothing);
+    expect(find.text('Caută cântar'), findsOneWidget);
+    await tester.tap(find.byTooltip('Înapoi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Cântar'), findsOneWidget);
+    expect(find.byType(ScalePage), findsNothing);
+    await capture(tester, 'narrow');
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+  testWidgets(
+    'display detail stays in the wide shell and survives narrow resize',
+    (tester) async {
+      FlutterSecureStorage.setMockInitialValues({});
+      tester.view.physicalSize = const Size(1280, 800);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+            CustomerDisplay.channel,
+            (call) async => {
+              'state': 'ready',
+              'enabled': true,
+              'backgroundAllowed': true,
+              'displays': [],
+            },
+          );
+      addTearDown(
+        () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(CustomerDisplay.channel, null),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (_, child) =>
+              FTheme(data: FTheme.neutral.dark.touch, child: child!),
+          home: const CompanionHome(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ecran client'));
+      await tester.pumpAndSettle();
+      expect(
+        tester
+            .widget<CustomerDisplayPage>(find.byType(CustomerDisplayPage))
+            .embedded,
+        true,
+      );
+      expect(find.text('POS'), findsOneWidget);
+      expect(find.byType(Scaffold), findsOneWidget);
+      expect(find.text('Conectat · așteaptă coșul'), findsOneWidget);
+      tester.view.physicalSize = const Size(360, 640);
+      await tester.pumpAndSettle();
+      expect(find.byType(CustomerDisplayPage), findsOneWidget);
+      expect(find.text('POS'), findsNothing);
+      await tester.tap(find.byTooltip('Înapoi'));
+      await tester.pumpAndSettle();
+      expect(find.text('POS'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   testWidgets(
     'connection indicators stack in portrait and align in landscape',
     (tester) async {
@@ -62,7 +183,13 @@ void main() {
     'home has connection rows and opens diagnostics without operational buttons',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
-      await tester.pumpWidget(const MaterialApp(home: CompanionHome()));
+      await tester.pumpWidget(
+        MaterialApp(
+          builder: (_, child) =>
+              FTheme(data: FTheme.neutral.dark.touch, child: child!),
+          home: const CompanionHome(),
+        ),
+      );
       await tester.pumpAndSettle();
       for (final label in [
         'Asociere ERP',
@@ -76,9 +203,14 @@ void main() {
       expect(find.text('Casa de marcat'), findsOneWidget);
       expect(find.text('Terminal de plată'), findsOneWidget);
       expect(find.text('POS'), findsOneWidget);
-      await tester.tap(find.byTooltip('Diagnostic'));
+      expect(find.text('Cântar'), findsOneWidget);
+      await tester.tap(find.byTooltip('Mai multe'));
+      await tester.pumpAndSettle();
+      expect(find.text('Cântar Bluetooth'), findsNothing);
+      await tester.tap(find.text('Diagnostic'));
       await tester.pumpAndSettle();
       expect(find.text('Doar probleme'), findsOneWidget);
+      expect(find.byTooltip('Verifică actualizările'), findsOneWidget);
       expect(find.text('Mesaje conexiune'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
       await tester.pumpAndSettle();

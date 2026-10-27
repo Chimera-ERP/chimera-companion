@@ -4,9 +4,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import android.net.Uri
 import android.os.Build
-import android.provider.Settings
 import androidx.core.content.FileProvider
 import java.io.File
 
@@ -19,6 +17,7 @@ class CompanionUpdates(private val activity: Activity) {
         (if (Build.VERSION.SDK_INT >= 28) info.signingInfo?.apkContentsSigners else info.signatures)
             ?.map { it.toCharsString() }?.toSet() ?: emptySet()
     fun versionCode(): Long = code(installed())
+    fun canInstall(): Boolean = Build.VERSION.SDK_INT < 26 || activity.packageManager.canRequestPackageInstalls()
 
     fun install(path: String, expectedVersion: Long): Boolean {
         val file = File(path).canonicalFile
@@ -30,8 +29,8 @@ class CompanionUpdates(private val activity: Activity) {
         require(code(candidate) == expectedVersion && code(candidate) > code(current)) { "Versiune APK incorectă sau deja instalată." }
         val trusted = signatures(current)
         require(trusted.isNotEmpty() && signatures(candidate) == trusted) { "Semnătura APK nu corespunde aplicației instalate." }
-        if (Build.VERSION.SDK_INT >= 26 && !activity.packageManager.canRequestPackageInstalls()) {
-            activity.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${activity.packageName}")))
+        if (!canInstall()) {
+            CompanionSettings.open(activity, "install")
             return false
         }
         val uri = FileProvider.getUriForFile(activity, "${activity.packageName}.updates", file)

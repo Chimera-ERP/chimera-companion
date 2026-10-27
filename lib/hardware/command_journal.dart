@@ -161,6 +161,12 @@ class CommandJournal {
     return (await _latestStrict()).containsKey(id);
   }
 
+  Future<bool> hasProductionPrint(String id, String deviceId, String operation) async {
+    final entry = (await _latestStrict())[id];
+    return entry != null && entry['deviceId'] == deviceId &&
+      entry['operation'] == operation && operation.startsWith('production');
+  }
+
   /// Only a final adapter rejection proves that this receipt had no effect.
   /// In-flight, unknown, successful and foreign-equipment entries never qualify.
   Future<bool> hasRejectedReceipt(String id, String deviceId) async {
@@ -213,6 +219,7 @@ class CommandJournal {
       }
       final source = await file.readAsString();
       Map<String, dynamic>? previous;
+      final provisionalEntries=<String,Map<String,dynamic>>{};
       for (final line in const LineSplitter().convert(source)) {
         final value = jsonDecode(line);
         if (value is! Map<String, dynamic> ||
@@ -223,6 +230,10 @@ class CommandJournal {
           );
         }
         if (value['id'] == id) previous = value;
+        if(payload['labelLeaseId']!=null && value['labelLeaseId']==payload['labelLeaseId'] &&
+          value['deviceId']==deviceId && value['operation']=='productionLabel') {
+          provisionalEntries[value['id'] as String]={...?provisionalEntries[value['id']],...Map<String,dynamic>.from(value)};
+        }
         if(operation=='payment' && payload['saleId']!=null &&
             value['operation']=='payment' && value['saleId']==payload['saleId'] &&
             value['receiptCompanionId']==payload['receiptCompanionId'] && value['id']!=id) {
@@ -254,12 +265,40 @@ class CommandJournal {
               'Comandă trimisă anterior; necesită verificare',
         );
       }
+      if(payload['labelLeaseId']!=null) {
+        final max=payload['maxCommands'];
+        if(operation!='productionLabel'||max is! int||max<1||max>100||provisionalEntries.length>=max) {
+          throw StateError('Provisional output label lease command limit reached');
+        }
+        final reprint=payload['reprintOf'];
+        if(reprint!=null) {
+          final original=provisionalEntries[reprint];
+          if(original==null || original['reportId']!=payload['reportId'] ||
+            original['labelDocumentHash']!=payload['labelDocumentHash']) {
+            throw StateError('Reprint must preserve the exact measured output and original lease');
+          }
+        } else if(provisionalEntries.values.any((entry)=>entry['reportId']==payload['reportId'])) {
+          throw StateError('Output report already labelled; explicit auditable reprint required');
+        }
+      }
       Future<void> append(Map<String, Object?> value) async {
         await handle!.writeString('${jsonEncode(value)}\n');
         await handle.flush();
       }
 
       final metadata = {
+        if (operation.startsWith('production')) ...{
+          'reprintOf': payload['reprintOf'],
+          'reprintReason': payload['reprintReason'],
+          'operationId': payload['operationId'],
+          'provisional': payload['provisional'],
+          'authorizedActor': payload['authorizedActor'],
+          'authorizedDevice': payload['authorizedDevice'],
+          if(payload['labelLeaseId']!=null) ...{
+            'labelLeaseId':payload['labelLeaseId'],'reportId':payload['reportId'],
+            'labelDocumentHash':payload['labelDocumentHash'],
+          },
+        },
         if(operation=='payment' && payload['saleId']!=null) ...{
           'saleId':payload['saleId'],'receiptCompanionId':payload['receiptCompanionId'],
           'receiptCommandId':payload['receiptCommandId'],

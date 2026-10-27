@@ -1,0 +1,180 @@
+{
+  "version": 1,
+  "foreignCommands": ["quality:sync"],
+  "repository": "chimera-companion",
+  "authority": "../chimera",
+  "runner": "jest",
+  "localGuidance": "Flutter Android hardware bridge; iOS requires physical validation. Keep ECR/Viva procedures in adapters and use the durable executor. Do not retry unknown fiscal/payment outcomes. Preserve device TLS keys, identities and OTA compatibility. Commands: flutter analyze, flutter test <file>, dart run tool/quality.dart. Hardware operations require explicit authorization.",
+  "documents": {
+    "README.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "docs/api.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "docs/https-release-gate.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "docs/implementation-checklist.md": {
+      "classification": "active-work",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "docs/pairing.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "docs/vendor-provenance.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "AGENTS.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    },
+    "CLAUDE.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Existing service reference"
+    }
+  },
+  "existingTests": [
+    "test/adapters_test.dart",
+    "test/api_documentation_test.dart",
+    "test/app_updates_test.dart",
+    "test/catalog_http_test.dart",
+    "test/command_executor_test.dart",
+    "test/connectivity_client_test.dart",
+    "test/contracts_test.dart",
+    "test/daily_z_test.dart",
+    "test/datecs_device_client_test.dart",
+    "test/datecs_native_test.dart",
+    "test/device_credentials_test.dart",
+    "test/diagnostic_outbox_test.dart",
+    "test/enrollment_migration_test.dart",
+    "test/enrollment_test.dart",
+    "test/erp_commands_test.dart",
+    "test/external_payment_test.dart",
+    "test/fiscal_device_test.dart",
+    "test/hardware_smoke_test.dart",
+    "test/home_layout_test.dart",
+    "test/journal_test.dart",
+    "test/local_bridge_test.dart",
+    "test/local_server_test.dart",
+    "test/local_tls_test.dart",
+    "test/offline_grant_test.dart",
+    "test/offline_session_test.dart",
+    "test/operator_assertion_test.dart",
+    "test/operator_change_test.dart",
+    "test/operator_readiness_test.dart",
+    "test/operator_session_integration_test.dart",
+    "test/pairing_test.dart",
+    "test/payment_admission_test.dart",
+    "test/payment_evidence_test.dart",
+    "test/payment_rejection_test.dart",
+    "test/protocols_test.dart",
+    "test/sale_admission_test.dart",
+    "test/sale_lifecycle_test.dart",
+    "test/signed_http_authorization_test.dart",
+    "test/tcp_transport_test.dart",
+    "test/tls_provisioning_test.dart",
+    "test/tremol_password_test.dart",
+    "test/two_companion_checkout_test.dart",
+    "test/viva_connection_test.dart",
+    "test/viva_test.dart",
+    "test/widget_test.dart"
+  ],
+  "coverage": {
+    "test/console_test.dart": {"level":"unit","behavior":"Ulanzi framing/ZIP/barriers, held-key suppression, fresh one-shot console views and scoped signed short-lived authorization","limitations":["Synthetic USB and cryptographic identities; physical firmware qualification pending"]},
+    "test/console_diagnostics_test.dart": {"level":"unit","behavior":"Diagnostic keys5/10 page navigation, randomized other keys, test/KDS mutual exclusion, in-flight/disconnect safety and opaque black rendered PNGs; console screen layout","limitations":["Synthetic USB; actual display contrast and physical navigation require user trial"]},
+    "test/console_stream_test.dart": {"level":"integration","behavior":"Real loopback TLS/WebSocket rejects copied grants without device proof and carries current-view presses and same-identity renewal","limitations":["Synthetic USB/signing keys; not LAN or physical-device acceptance"]},
+    "test/production_print_test.dart": {"level":"integration","behavior":"Bounded ESC/POS/ZPL templates, Romanian transliteration, signed production scope, durable duplicate/restart handling, queue admission and explicit reprints","limitations":["Synthetic identities and mocked printer sends; no physical printer acceptance"]},
+    "test/printer_settings_test.dart": {"level":"unit","behavior":"Optional printer settings loading, narrow layout, validation, persistence and enrollment/ECR identity preservation","limitations":["Flutter widget harness; no manual browser or hardware inspection"]},
+    "test/niimbot_test.dart": {"level":"unit","behavior":"NIIMBOT framing, bounded model identification, row encoding, print task rejection, fixed raster and shared authorized durable idempotency","limitations":["Simulated Bluetooth transport; physical printer qualification pending"]},
+    "test/niimbot_wizard_test.dart": {"level":"unit","behavior":"Bluetooth printer selection and persistence with real application theme in portrait, landscape and wide layouts","limitations":["Mocked discovery and secure storage; rendered Flutter harness, not a physical iMin"]},
+    "test/provisional_label_test.dart": {"level":"integration","behavior":"Real TLS and ES256 ERP lease plus KDS device proof authorize measured provisional output; scope, quantity, local-lot, expiry, duplicate report, exact reprint and durable command-limit enforcement","limitations":["Loopback HTTPS and synthetic keys with mocked printer sends; no real LAN printer or statutory acceptance"]},
+    "test/customer_display_bundle_test.dart": {
+      "level": "unit",
+      "behavior": "Atomic offline bundle installation, cold restore, hash/size/scope rejection and previous-version preservation",
+      "limitations": ["Synthetic files; native Android and physical checks recorded separately"]
+    },
+    "test/customer_display_stream_test.dart": {"level":"integration","behavior":"Persistent TLS display stream verifies paired signatures, challenge freshness, payload integrity, expiry and revocation; rejects other operations and oversized frames","limitations":["Real loopback TLS/WebSocket with synthetic identities; native display rendering verified separately on iMin"]},
+    "test/customer_display_test.dart": {"level":"unit","behavior":"Bounded public basket payload and paired display dispatch without fiscal device access","limitations":["Mocked Android method channel; physical iMin acceptance pending"]},
+    "test/customer_display_authorization_test.dart": {"level":"integration","behavior":"Signed paired POS can update display without operator; copied tokens, tampering, replay and ungranted operations fail","limitations":["Synthetic signing identities; no physical LAN"]}
+  },
+  "impact": [
+    {
+      "id": "verification",
+      "prefixes": [
+        "src/verification/",
+        "src/routes/verification",
+        "tests/e2e/",
+        "tools/quality/",
+        "scripts/quality"
+      ],
+      "checks": [
+        [
+          "flutter",
+          "analyze"
+        ]
+      ]
+    },
+    {
+      "id": "shared-security-sql",
+      "prefixes": [
+        "sql/",
+        "src/middleware/",
+        "src/routes/auth",
+        "lib/auth",
+        "android/"
+      ],
+      "checks": [
+        [
+          "flutter",
+          "analyze"
+        ]
+      ]
+    },
+    {
+      "id": "application",
+      "prefixes": [
+        "src/",
+        "app/",
+        "components/",
+        "lib/",
+        "hooks/",
+        "tests/",
+        "test/",
+        "tool/",
+        "scripts/",
+        "services/",
+        "packages/"
+      ],
+      "checks": [
+        [
+          "flutter",
+          "analyze"
+        ]
+      ]
+    }
+  ],
+  "releaseChecks": [
+    [
+      "flutter",
+      "analyze"
+    ],
+    [
+      "flutter",
+      "test"
+    ]
+  ]
+}

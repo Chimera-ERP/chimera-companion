@@ -112,7 +112,7 @@ void main() {
       'signed HTTPS external-card flow persists ${receiptOutcome.name} receipt after bridge restart',
       () async {
         final tls = await TlsFixture.create();
-        FlutterSecureStorage.setMockInitialValues({'local_hardware_v1': '{}'});
+        FlutterSecureStorage.setMockInitialValues({'local_hardware_v1': '{"host":"192.168.1.25"}'});
         final authority = SigningFixture(17),
             pos = SigningFixture(18),
             companion = SigningFixture(19);

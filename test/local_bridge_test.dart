@@ -13,7 +13,7 @@ class FakeFiscalDevice extends FiscalDevice {
   FakeFiscalDevice() : super(fixtures.connection());
   Future<DeviceStatus>? pendingRead;
   bool offline = false;
-  int prints = 0, reports = 0;
+  int prints = 0, reports = 0, statusReads = 0;
   final operatorCalls = <Map<String, dynamic>>[];
   @override
   Future<Map<String, Object?>> setOperator({
@@ -27,6 +27,7 @@ class FakeFiscalDevice extends FiscalDevice {
   }
   @override
   Future<DeviceStatus> readStatus() async {
+    statusReads++;
     if (offline) throw const SocketException('offline');
     return await pendingRead ?? const DeviceStatus(ready: true, description: 'Ready');
   }
@@ -49,7 +50,7 @@ void main() {
   late LocalBridge bridge;
   late FakeFiscalDevice device;
   setUp(() async {
-    FlutterSecureStorage.setMockInitialValues({'local_hardware_v1': '{}'});
+    FlutterSecureStorage.setMockInitialValues({'local_hardware_v1': '{"host":"192.168.1.25"}'});
     dir = await Directory.systemTemp.createTemp('companion-bridge-test-');
     device = FakeFiscalDevice();
     bridge = LocalBridge(
@@ -71,6 +72,27 @@ void main() {
     expect(unavailable['message'], contains('oprită sau inaccesibilă'));
     expect(device.prints, 0);
     expect(device.reports, 0);
+  });
+  test('scoped scale status works without configured ECR and performs no fiscal work', () async {
+    FlutterSecureStorage.setMockInitialValues({});
+    final result = await bridge.run('status', 'scale-only', {'scope': 'scale'});
+    expect(result['outcome'], 'succeeded');
+    expect((result['scale'] as Map)['version'], 1);
+    expect((result['scale'] as Map)['reading'], isNull);
+    expect(device.statusReads, 0);
+    expect(device.prints, 0);
+    expect(device.reports, 0);
+  });
+  test('display-only setup reports an unconfigured ECR and rejects fiscal work', () async {
+    FlutterSecureStorage.setMockInitialValues({'local_hardware_v1': '{"vivaEnabled":"false"}'});
+    final status = await bridge.run('status', 'without-ecr', {});
+    expect(status['ecrReady'], isFalse);
+    expect(bridge.ecr['state'], 'unconfigured');
+    final result = await bridge.run('xReport', 'no-report', {});
+    expect(result['outcome'], 'rejected');
+    expect(result['message'], contains('nu este configurată'));
+    expect(device.reports, 0);
+    expect(device.prints, 0);
   });
   test('operator API delegates lifecycle to the device, without composing reports', () async {
     final identity = {'operatorId': 'one', 'operatorName': 'Ana'};
