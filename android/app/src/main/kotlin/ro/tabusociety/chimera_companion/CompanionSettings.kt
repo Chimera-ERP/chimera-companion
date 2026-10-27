@@ -10,6 +10,7 @@ object CompanionSettings {
     fun open(context: Context, page: String) {
         val primary = when (page) {
             "wifi" -> Intent(Settings.ACTION_WIFI_SETTINGS)
+            "bluetooth" -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
             "display" -> Intent(Settings.ACTION_DISPLAY_SETTINGS)
             "overlay" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
             "install" -> Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))

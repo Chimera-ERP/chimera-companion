@@ -37,16 +37,17 @@ void main() {
         const MaterialApp(home: DeviceSetupPage(initialStep: 3)),
       );
       await tester.pumpAndSettle();
+      expect(find.text('IP local Viva'), findsNothing);
+      expect(find.text('Mai târziu'), findsOneWidget);
+      await tester.tap(find.byType(SwitchListTile));
+      await tester.pumpAndSettle();
       final fields = tester.widgetList<TextField>(find.byType(TextField));
       expect(
         fields.any((field) => field.controller?.text == '127.0.0.1'),
         true,
       );
       expect(fields.any((field) => field.controller?.text == '9564'), true);
-      expect(find.text('Configurează Viva mai târziu'), findsOneWidget);
-      await tester.tap(find.byType(SwitchListTile));
-      await tester.pumpAndSettle();
-      expect(find.text('Continuă la verificare'), findsOneWidget);
+      expect(find.text('Continuă'), findsOneWidget);
       expect(find.text('Verifică Viva · fără plată'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },

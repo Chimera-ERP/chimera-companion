@@ -6,11 +6,20 @@ const setupStepTitles = [
   'Casa de marcat',
   'Terminal de plată',
   'Verificare finală',
+  'Cum folosești Companion?',
+  'Cântar',
+  'Imprimantă producție',
 ];
 
 /// Keep forms readable on a POS screen, without squeezing short landscape phones.
 class SetupFrame extends StatelessWidget {
-  const SetupFrame({super.key, required this.step, required this.child});
+  const SetupFrame({
+    super.key,
+    required this.step,
+    required this.child,
+    this.steps = const [0, 1, 2, 3, 4],
+  });
+  final List<int> steps;
   final int step;
   final Widget child;
   @override
@@ -34,16 +43,16 @@ class SetupFrame extends StatelessWidget {
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(12, 24, 24, 24),
                   children: [
-                    for (var i = 0; i < setupStepTitles.length; i++)
+                    for (var i = 0; i < steps.length; i++)
                       ListTile(
-                        selected: i == step,
+                        selected: steps[i] == step,
                         contentPadding: const EdgeInsets.symmetric(
                           horizontal: 12,
                         ),
-                        leading: i < step
+                        leading: i < steps.indexOf(step)
                             ? const Icon(Icons.check, size: 20)
                             : Text('${i + 1}'),
-                        title: Text(setupStepTitles[i]),
+                        title: Text(setupStepTitles[steps[i]]),
                       ),
                   ],
                 ),
@@ -67,7 +76,12 @@ class SetupAction {
 }
 
 class SetupHeader extends StatelessWidget {
-  const SetupHeader({super.key, required this.step});
+  const SetupHeader({
+    super.key,
+    required this.step,
+    this.steps = const [0, 1, 2, 3, 4],
+  });
+  final List<int> steps;
   final int step;
   @override
   Widget build(BuildContext context) => Padding(
@@ -76,7 +90,7 @@ class SetupHeader extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          '${step + 1} din 5',
+          '${steps.indexOf(step) + 1} din ${steps.length}',
           style: const TextStyle(color: Colors.grey, fontSize: 13),
         ),
         const SizedBox(height: 8),
@@ -93,6 +107,9 @@ class SetupHeader extends StatelessWidget {
               'Caută în rețea sau introdu adresa. Poți configura mai târziu.',
               'Pe acest telefon sau pe alt dispozitiv. Pas opțional.',
               'Verifică apoi conexiunea reală din browserul POS.',
+              'Alege aplicația. Dispozitivele pot fi adăugate și mai târziu.',
+              'Alege conexiunea și cântarul. Pas opțional.',
+              'Alege conexiunea și imprimanta. Pas opțional.',
             ][step],
             style: const TextStyle(color: Colors.grey, fontSize: 13),
           ),

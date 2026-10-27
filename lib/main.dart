@@ -14,6 +14,9 @@ import 'companion_app_bar.dart';
 import 'service_console.dart';
 import 'diagnostic_outbox.dart';
 import 'customer_display_page.dart';
+import 'printing/printer_settings_page.dart';
+import 'scale_page.dart';
+import 'console/console_page.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -168,6 +171,7 @@ class _CompanionEntryState extends State<CompanionEntry> {
       : _complete == true
       ? CompanionHome(bridge: widget.bridge)
       : DeviceSetupPage(
+          scales: widget.bridge?.scales,
           onCompleted: () {
             if (mounted) setState(() => _complete = true);
           },
@@ -184,19 +188,29 @@ class CompanionHome extends StatefulWidget {
 class _CompanionHomeState extends State<CompanionHome> {
   late final LocalBridge _bridge;
   int? _selected;
+  final _detailKey = GlobalKey();
   String? _error;
+  Timer? _scaleFreshness;
   static const _titles = [
     'Chimera',
     'Casa de marcat',
     'Terminal de plată',
     'POS',
     'Ecran client',
+    'Cântar',
+    'Imprimantă producție',
+    'Consolă KDS',
   ];
   @override
   void initState() {
     super.initState();
     _bridge = widget.bridge ?? LocalBridge();
     _bridge.addListener(_update);
+    _bridge.scales.addListener(_update);
+    _bridge.console.addListener(_update);
+    _scaleFreshness = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_bridge.scales.reading != null) _update();
+    });
     _start();
   }
 
@@ -221,6 +235,9 @@ class _CompanionHomeState extends State<CompanionHome> {
   @override
   void dispose() {
     _bridge.removeListener(_update);
+    _bridge.scales.removeListener(_update);
+    _bridge.console.removeListener(_update);
+    _scaleFreshness?.cancel();
     if (widget.bridge == null) unawaited(_bridge.close());
     super.dispose();
   }
@@ -280,6 +297,9 @@ class _CompanionHomeState extends State<CompanionHome> {
     ),
   );
   Widget _detail(int section) => switch (section) {
+    7 => ConsolePage(service: _bridge.console, embedded: true),
+    5 => ScalePage(service: _bridge.scales, embedded: true),
+    6 => const PrinterSettingsPage(embedded: true),
     4 => const CustomerDisplayPage(embedded: true),
     0 => FTileGroup(
       children: [
@@ -316,7 +336,9 @@ class _CompanionHomeState extends State<CompanionHome> {
               'Configurează casa',
               'Adresă și operator',
               Icons.settings_outlined,
-              () => _open(const DeviceSetupPage(initialStep: 2)),
+              () => _open(
+                DeviceSetupPage(initialStep: 2, scales: _bridge.scales),
+              ),
             ),
           ],
         ),
@@ -351,7 +373,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           'Configurează terminalul',
           'Pe acest telefon sau în LAN',
           Icons.settings_outlined,
-          () => _open(const DeviceSetupPage(initialStep: 3)),
+          () => _open(DeviceSetupPage(initialStep: 3, scales: _bridge.scales)),
         ),
       ],
     ),
@@ -373,7 +395,7 @@ class _CompanionHomeState extends State<CompanionHome> {
           'Configurează HTTPS',
           'Conexiune securizată pentru POS',
           Icons.security,
-          () => _open(const DeviceSetupPage(initialStep: 1)),
+          () => _open(DeviceSetupPage(initialStep: 1, scales: _bridge.scales)),
         ),
         FTile(
           title: const Text('Ultima comunicare POS'),
@@ -445,10 +467,45 @@ class _CompanionHomeState extends State<CompanionHome> {
                 () => _select(3, wide),
               ),
               _row(
+                'Cântar',
+                _bridge.scales.selectedName ?? 'Bluetooth · neconfigurat',
+                Icons.scale_outlined,
+                () => _select(5, wide),
+                state: _bridge.scales.state.name == 'ready'
+                    ? (_bridge.scales.reading != null &&
+                              DateTime.now().difference(
+                                    _bridge.scales.reading!.observedAt,
+                                  ) <=
+                                  const Duration(seconds: 2)
+                          ? '${_bridge.scales.reading!.net} g'
+                          : 'Conectat')
+                    : _bridge.scales.state.name == 'connecting' ||
+                          _bridge.scales.connecting
+                    ? 'Conectare…'
+                    : _bridge.scales.state.name == 'error'
+                    ? 'De verificat'
+                    : _bridge.scales.selectedId == null
+                    ? 'Opțional'
+                    : 'Deconectat',
+              ),
+              _row(
                 'Ecran client',
                 'Coș și total',
                 Icons.monitor_outlined,
                 () => _select(4, wide),
+              ),
+              _row(
+                'Imprimantă producție',
+                'Tichete și etichete · LAN',
+                Icons.print_outlined,
+                () => _select(6, wide),
+              ),
+              _row(
+                'Consolă KDS',
+                'Ulanzi · USB',
+                Icons.keyboard_outlined,
+                () => _select(7, wide),
+                state: _bridge.console.connected ? 'Conectat' : 'Opțional',
               ),
             ],
           ),
@@ -467,6 +524,7 @@ class _CompanionHomeState extends State<CompanionHome> {
         ],
       );
       final content = Align(
+        key: _detailKey,
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
@@ -522,7 +580,9 @@ class _CompanionHomeState extends State<CompanionHome> {
                 tooltip: 'Mai multe',
                 enabled: !_bridge.busy,
                 onSelected: (value) {
-                  if (value == 'settings') _open(const DeviceSetupPage());
+                  if (value == 'settings') {
+                    _open(DeviceSetupPage(scales: _bridge.scales));
+                  }
                   if (value == 'diagnostic') _diagnostics();
                   if (value == 'console') {
                     Navigator.of(context).push(

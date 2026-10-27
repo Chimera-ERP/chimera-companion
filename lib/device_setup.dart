@@ -19,12 +19,21 @@ import 'local_tls.dart';
 import 'customer_display_page.dart';
 import 'companion_dialog.dart';
 import 'android_settings.dart';
+import 'setup_profile.dart';
+import 'scale_service.dart';
+import 'scale_page.dart';
+import 'printing/printer_settings_page.dart';
 
 class DeviceSetupPage extends StatefulWidget {
-  const DeviceSetupPage({super.key, this.onCompleted, this.initialStep = 0})
-    : assert(initialStep >= 0 && initialStep <= 4);
+  const DeviceSetupPage({
+    super.key,
+    this.onCompleted,
+    this.initialStep = 0,
+    this.scales,
+  }) : assert(initialStep >= 0 && initialStep <= 4);
   final VoidCallback? onCompleted;
   final int initialStep;
+  final ScaleService? scales;
   @override
   State<DeviceSetupPage> createState() => _DeviceSetupPageState();
 }
@@ -54,6 +63,19 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   FiscalModel _model = FiscalModel.tremolM20;
   bool _busy = true;
   int _step = 0;
+  SetupProfile _profile = SetupProfile.pos;
+  bool _printerConfigured = false;
+  Set<int> _custom = {2, 3, 6, 7};
+  late final ScaleService _scales = widget.scales ?? ScaleService();
+  List<int> get _steps {
+    final steps = setupSteps(_profile, _custom);
+    // Explicit ECR/Viva links remain accessible regardless of deployment profile.
+    if (!steps.contains(widget.initialStep)) {
+      steps.insert(steps.length - 1, widget.initialStep);
+    }
+    return steps;
+  }
+
   bool _ecrVerified = false;
   bool _vivaEnabled = false;
   bool _hardwareSaved = false;
@@ -68,7 +90,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   void initState() {
     super.initState();
     _step = widget.initialStep;
+    _scales.addListener(_scaleChanged);
     _load();
+  }
+
+  void _scaleChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -77,16 +104,31 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       field.dispose();
     }
     _stepAction.dispose();
+    _scales.removeListener(_scaleChanged);
+    if (widget.scales == null) _scales.close();
     super.dispose();
   }
 
   Future<void> _load() async {
     try {
+      final savedProfile = await _storage.read(key: 'setup_profile_v1');
+      _printerConfigured =
+          await _storage.read(key: 'production_printer_v1') != null;
+      if (savedProfile != null) {
+        final data = jsonDecode(savedProfile) as Map<String, dynamic>;
+        _profile = SetupProfile.values.byName(data['profile'] as String);
+        _custom = (data['devices'] as List)
+            .whereType<int>()
+            .where([2, 3, 6, 7].contains)
+            .toSet();
+      }
       if (widget.initialStep == 0) {
         final savedStep = int.tryParse(
           await _storage.read(key: 'setup_step_v3') ?? '0',
         );
-        if (savedStep != null && savedStep >= 0 && savedStep <= 4) {
+        if (savedProfile == null && (savedStep == null || savedStep == 0)) {
+          _step = 5;
+        } else if (savedStep != null && _steps.contains(savedStep)) {
           _step = savedStep;
         }
       }
@@ -428,12 +470,22 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
 
   Future<void> _next({bool skipEcr = false}) async {
     if ((_step == 2 && !skipEcr) || _step == 3) await _save();
-    if (mounted && (_step < 2 || skipEcr || _hardwareSaved)) {
-      await _storage.write(key: 'setup_step_v3', value: '${_step + 1}');
+    if (mounted && (_step < 2 || _step >= 5 || skipEcr || _hardwareSaved)) {
+      final next = _steps[_steps.indexOf(_step) + 1];
+      if (_step == 5) {
+        await _storage.write(
+          key: 'setup_profile_v1',
+          value: jsonEncode({
+            'profile': _profile.name,
+            'devices': _custom.toList(),
+          }),
+        );
+      }
+      await _storage.write(key: 'setup_step_v3', value: '$next');
       if (!mounted) return;
       _stepAction.value = null;
       setState(() {
-        _step++;
+        _step = next;
         _feedback = null;
       });
     }
@@ -743,6 +795,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       ],
       body: SetupFrame(
         step: _step,
+        steps: _steps,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: Column(
@@ -752,7 +805,53 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                   key: ValueKey(_step),
                   padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
                   children: [
-                    SetupHeader(step: _step),
+                    SetupHeader(step: _step, steps: _steps),
+                    if (_step == 5) ...[
+                      for (final profile in SetupProfile.values)
+                        ListTile(
+                          title: Text(
+                            profile.name == 'custom'
+                                ? 'Custom'
+                                : profile.name.toUpperCase(),
+                          ),
+                          subtitle: Text(switch (profile) {
+                            SetupProfile.pos =>
+                              'Casă de marcat, plată și cântar',
+                            SetupProfile.kds || SetupProfile.pds =>
+                              'Cântar și imprimantă producție',
+                            SetupProfile.custom =>
+                              'Alege dispozitivele necesare',
+                          }),
+                          trailing: _profile == profile
+                              ? const Icon(Icons.check_circle_outline)
+                              : null,
+                          onTap: _busy
+                              ? null
+                              : () => setState(() => _profile = profile),
+                        ),
+                      if (_profile == SetupProfile.custom)
+                        for (final id in [2, 3, 6, 7])
+                          CheckboxListTile(
+                            title: Text(setupStepTitles[id]),
+                            value: _custom.contains(id),
+                            onChanged: _busy
+                                ? null
+                                : (value) => setState(() {
+                                    if (value == true) {
+                                      _custom.add(id);
+                                    } else {
+                                      _custom.remove(id);
+                                    }
+                                  }),
+                          ),
+                    ],
+                    if (_step == 6) ScalePage(service: _scales, embedded: true),
+                    if (_step == 7)
+                      PrinterSettingsPage(
+                        embedded: true,
+                        onSaved: () =>
+                            setState(() => _printerConfigured = true),
+                      ),
                     if (_step == 2) ...[
                       SetupCard(
                         child: DropdownButtonFormField<FiscalModel>(
@@ -969,30 +1068,53 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                       ),
                     if (_step == 4) ...[
                       const Text(
-                        'Poți folosi Companion pentru ecranul clientului și dispozitivele configurate. Casa de marcat și Viva pot fi adăugate ulterior.',
+                        'Dispozitivele neconfigurate pot fi adăugate ulterior din pagina principală.',
                       ),
                       const SizedBox(height: 16),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.receipt_long_outlined),
-                        title: const Text('Casa de marcat'),
-                        subtitle: Text(
-                          _savedHardware['host'] is String &&
-                                  (_savedHardware['host'] as String).isNotEmpty
-                              ? 'Configurată'
-                              : 'De configurat mai târziu',
+                      if (_steps.contains(2))
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.receipt_long_outlined),
+                          title: const Text('Casa de marcat'),
+                          subtitle: Text(
+                            _savedHardware['host'] is String &&
+                                    (_savedHardware['host'] as String)
+                                        .isNotEmpty
+                                ? 'Configurată'
+                                : 'De configurat mai târziu',
+                          ),
                         ),
-                      ),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.credit_card),
-                        title: const Text('Terminal de plată'),
-                        subtitle: Text(
-                          _savedHardware['vivaEnabled'] == 'true'
-                              ? 'Configurat'
-                              : 'De configurat mai târziu',
+                      if (_steps.contains(3))
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.credit_card),
+                          title: const Text('Terminal de plată'),
+                          subtitle: Text(
+                            _savedHardware['vivaEnabled'] == 'true'
+                                ? 'Configurat'
+                                : 'De configurat mai târziu',
+                          ),
                         ),
-                      ),
+                      if (_steps.contains(6))
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.scale_outlined),
+                          title: const Text('Cântar'),
+                          subtitle: Text(
+                            _scales.selectedName ?? 'De configurat mai târziu',
+                          ),
+                        ),
+                      if (_steps.contains(7))
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.print_outlined),
+                          title: const Text('Imprimantă producție'),
+                          subtitle: Text(
+                            _printerConfigured
+                                ? 'Configurată · imprimarea fizică neverificată'
+                                : 'De configurat mai târziu',
+                          ),
+                        ),
                       const Divider(),
                       ListTile(
                         contentPadding: EdgeInsets.zero,
@@ -1031,7 +1153,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                 ),
                 child: Row(
                   children: [
-                    if (_step > 0)
+                    if (_steps.indexOf(_step) > 0)
                       IconButton(
                         tooltip: 'Înapoi',
                         onPressed: _busy || stepAction?.busy == true
@@ -1039,12 +1161,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                             : () async {
                                 await _storage.write(
                                   key: 'setup_step_v3',
-                                  value: '${_step - 1}',
+                                  value: '${_steps[_steps.indexOf(_step) - 1]}',
                                 );
                                 if (mounted) {
                                   _stepAction.value = null;
                                   setState(() {
-                                    _step--;
+                                    _step = _steps[_steps.indexOf(_step) - 1];
                                     _feedback = null;
                                   });
                                 }
@@ -1055,6 +1177,21 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                       TextButton(
                         onPressed: _busy ? null : () => _next(skipEcr: true),
                         child: const Text('Mai târziu'),
+                      ),
+                    if (_step >= 5)
+                      Expanded(
+                        child: FilledButton(
+                          style: _actionButtonStyle,
+                          onPressed: _busy ? null : _next,
+                          child: Text(
+                            _step == 5 ||
+                                    (_step == 6 &&
+                                        _scales.state.name == 'ready') ||
+                                    (_step == 7 && _printerConfigured)
+                                ? 'Continuă'
+                                : 'Mai târziu',
+                          ),
+                        ),
                       ),
                     if (_step == 2 || _step == 3)
                       Expanded(

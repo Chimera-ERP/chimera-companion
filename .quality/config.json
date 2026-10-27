@@ -94,6 +94,14 @@
     "test/widget_test.dart"
   ],
   "coverage": {
+    "test/console_test.dart": {"level":"unit","behavior":"Ulanzi framing/ZIP/barriers, held-key suppression, fresh one-shot console views and scoped signed short-lived authorization","limitations":["Synthetic USB and cryptographic identities; physical firmware qualification pending"]},
+    "test/console_diagnostics_test.dart": {"level":"unit","behavior":"Diagnostic keys5/10 page navigation, randomized other keys, test/KDS mutual exclusion, in-flight/disconnect safety and opaque black rendered PNGs; console screen layout","limitations":["Synthetic USB; actual display contrast and physical navigation require user trial"]},
+    "test/console_stream_test.dart": {"level":"integration","behavior":"Real loopback TLS/WebSocket rejects copied grants without device proof and carries current-view presses and same-identity renewal","limitations":["Synthetic USB/signing keys; not LAN or physical-device acceptance"]},
+    "test/production_print_test.dart": {"level":"integration","behavior":"Bounded ESC/POS/ZPL templates, Romanian transliteration, signed production scope, durable duplicate/restart handling, queue admission and explicit reprints","limitations":["Synthetic identities and mocked printer sends; no physical printer acceptance"]},
+    "test/printer_settings_test.dart": {"level":"unit","behavior":"Optional printer settings loading, narrow layout, validation, persistence and enrollment/ECR identity preservation","limitations":["Flutter widget harness; no manual browser or hardware inspection"]},
+    "test/niimbot_test.dart": {"level":"unit","behavior":"NIIMBOT framing, bounded model identification, row encoding, print task rejection, fixed raster and shared authorized durable idempotency","limitations":["Simulated Bluetooth transport; physical printer qualification pending"]},
+    "test/niimbot_wizard_test.dart": {"level":"unit","behavior":"Bluetooth printer selection and persistence with real application theme in portrait, landscape and wide layouts","limitations":["Mocked discovery and secure storage; rendered Flutter harness, not a physical iMin"]},
+    "test/provisional_label_test.dart": {"level":"integration","behavior":"Real TLS and ES256 ERP lease plus KDS device proof authorize measured provisional output; scope, quantity, local-lot, expiry, duplicate report, exact reprint and durable command-limit enforcement","limitations":["Loopback HTTPS and synthetic keys with mocked printer sends; no real LAN printer or statutory acceptance"]},
     "test/customer_display_bundle_test.dart": {
       "level": "unit",
       "behavior": "Atomic offline bundle installation, cold restore, hash/size/scope rejection and previous-version preservation",

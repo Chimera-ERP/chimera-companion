@@ -1,5 +1,39 @@
 # Chimera Companion — implementation status
 
+## D200 firmware branding and Companion-only operation — 2026-10-25
+
+Owner: Companion/hardware maintainers. Work deferred at the user's request for a
+context switch. This is the single remaining-work checklist for this increment;
+do not resume hardware commands, flashing or APK publishing until requested.
+
+### Installed and verified
+
+- [x] Boot shows only Chimera in the wide-key area, raised 7 pixels from the preceding placement.
+- [x] Standby shows Chimera and PROD / KEY / PAD instead of factory button artwork.
+- [x] User visually confirmed both screens on 2026-10-25: “Apar toate corect.” This confirms appearance, not key behavior or Companion compatibility.
+- [x] Disable factory keyboard output independently of the proprietary console protocol. Preserve the factory profile schema; removing its action structure caused an unsuccessful temporary trial and was not flashed.
+- [x] Disable automatic screen sleep. Persistent post-reboot check: 45 seconds without HID traffic, application running, brightness 255, offline mode entered and no sleep timer scheduled. Longer idle acceptance remains below.
+- [x] Verify installed resource image and boot-logo checksums; unchanged protected partitions and original eight-partition backup verified. Remove only task-owned on-device update staging files.
+
+### Remaining, in order
+
+- [ ] Reconnect to the Mac and verify normal custom-HID discovery and a read-only response after a cold start. Last observation had no device on USB; this is not evidence of a firmware fault.
+- [ ] Without Companion, physically press all keys/controls: no typing, application launch or factory shortcut. Test unplug/reconnect and longer idle; branded screen must remain visible.
+- [ ] On Android Companion, verify discovery, USB permission, dynamic icons, diagnostic up/down keys and actual KDS actions. Verify disconnect/reconnect returns to the appropriate safe standby; prior pre-patch console trials do not qualify this firmware.
+- [ ] Prevent accidental Ulanzi Studio control/firmware updates while preserving an explicit recovery path. First inspect the vendor update/control entry points. USB VID/PID changes alone are not authentication; do not use an arbitrary vendor ID or claim exclusivity. If identity changes are selected, update Companion recognition compatibly before changing the device.
+- [ ] Make provisioning/recovery reproducible for the supported firmware: exact source hashes, model/partition guards, patch validation and rollback instructions. Keep original firmware dumps/private device data out of Git and retain the known-good recovery package.
+
+Local handoff artifacts (not distributed with the repository):
+`../device-backups/ulanzi-d200-2026-10-24.ONNDiL/` contains original backups;
+`chimera-kds-standby/safe/` within it is the installed revision, with
+`result.json`, `verification.json`, `patches.json`, `upgrade-log.txt` and
+`persistent-idle-test.json`. The res-only recovery package is
+`chimera-prod-key-pad/rollback-res-update.img`; the original boot JPEG is
+`misc-extracted/boot_logo.JPG`. Use the guarded vendor updater, not a raw JPEG
+write to MISC. Stock VID 2207 / PID 0019 remains unchanged. Vendor software
+exclusion is **not implemented**; no Android end-to-end acceptance or other
+D200 firmware/model support is claimed.
+
 ## Customer display and POS download — 2026-10-14
 
 Single cross-repository checklist (ERP API/UI, POS, Companion):

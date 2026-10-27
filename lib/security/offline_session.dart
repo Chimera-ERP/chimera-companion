@@ -114,6 +114,34 @@ class OfflineSession {
     return claims;
   }
 
+  Map<String, dynamic> verifyConsole(String token, String origin) {
+    final claims = _verifier.verify(
+      token,
+      kind: 'kds-console',
+      now: _clock.check(_now()),
+    );
+    if (claims['version'] != 1 ||
+        claims['origin'] != origin ||
+        claims['exp'] - claims['iat'] > 60 ||
+        jsonEncode(claims['operations']) != '["console"]' ||
+        _locallyRevoked.contains(claims['pos']) ||
+        !_sameKey(claims['peer']?['jwk'], _publicKey) ||
+        claims['cnf']?['jwk'] is! Map) {
+      throw const FormatException('Invalid console authorization');
+    }
+    return claims;
+  }
+
+  bool verifyConsoleProof(
+    Map<String, dynamic> claims,
+    String message,
+    String signature,
+  ) => _verifier.verifySignature(
+    Map<String, dynamic>.from(claims['cnf']['jwk']),
+    message,
+    signature,
+  );
+
   Future<Map<String, Object?>> challenge(String lease) async {
     final now = _clock.check(_now());
     _pair(lease, now);
@@ -372,6 +400,153 @@ class OfflineSession {
         ].contains((grant['operations'] as List).single)) {
       throw const FormatException('Invalid ERP hardware authorization');
     }
+    return grant;
+  }
+
+  /// Exact production intents only; this grants no POS/fiscal permissions.
+  Future<Map<String, dynamic>> verifyProductionPrint(
+    String ticket,
+    Map<String, dynamic> payload,
+    String origin,
+  ) async {
+    final grant = _verifier.verify(
+      ticket,
+      kind: 'production-print',
+      now: _clock.check(_now()),
+    );
+    final operations = grant['operations'] as List;
+    if (grant['version'] != 1 ||
+        operations.length != 1 ||
+        ![
+          'productionWorkTicket',
+          'productionLabel',
+          'productionPrintDiagnostic',
+        ].contains(operations.single) ||
+        operations.single != payload['operation'] ||
+        grant['commandId'] != payload['commandId'] ||
+        grant['printerId'] != payload['printerId'] ||
+        grant['payloadHash'] != hardwarePayloadHash(payload) ||
+        grant['provisional'] != payload['provisional'] ||
+        grant['sub'] is! String ||
+        (grant['sub'] as String).isEmpty ||
+        (grant['pos'] as String).isEmpty ||
+        _locallyRevoked.contains(grant['pos']) ||
+        grant['origin'] != origin ||
+        Uri.tryParse(origin)?.scheme != 'https' ||
+        Uri.tryParse(origin)?.origin != origin) {
+      throw const FormatException('Invalid production print authorization');
+    }
+    if (payload['provisional'] != true &&
+        (grant['exp'] as int) - (grant['iat'] as int) > 300) {
+      throw const FormatException(
+        'Online print authorization exceeds five minutes',
+      );
+    }
+    await _persist();
+    return grant;
+  }
+
+  Future<Map<String, dynamic>> verifyProductionLabel(
+    String lease,
+    Map<String, dynamic> payload,
+    String message,
+    String signature,
+    String origin,
+  ) async {
+    final now = _clock.check(_now());
+    final grant = _verifier.verify(
+      lease,
+      kind: 'production-label-lease',
+      now: now,
+    );
+    final scope = grant['labelScope'];
+    if (scope is! Map<String, dynamic> ||
+        message.length > 16000 ||
+        grant['version'] != 1 ||
+        grant['operations'] is! List ||
+        (grant['operations'] as List).length != 1 ||
+        (grant['operations'] as List).single != 'productionLabel' ||
+        grant['provisional'] != true ||
+        grant['origin'] != origin ||
+        Uri.tryParse(origin)?.scheme != 'https' ||
+        Uri.tryParse(origin)?.origin != origin ||
+        _locallyRevoked.contains(grant['pos']) ||
+        (_trust['revoked_credentials'] as List? ?? []).contains(
+          grant['credential'],
+        ) ||
+        !_sameKey(grant['peer']?['jwk'], _publicKey) ||
+        grant['payloadHash'] != hardwarePayloadHash(scope) ||
+        scope['lease_id'] != grant['session_id'] ||
+        scope['operation_id'] != grant['commandId'] ||
+        scope['printer_id'] != grant['printerId'] ||
+        scope['device_id'] != grant['pos'] ||
+        scope['companion_id'] != companion ||
+        scope['origin'] != origin ||
+        scope['version'] != 1 ||
+        scope['max_commands'] is! int ||
+        scope['max_commands'] < 1 ||
+        scope['max_commands'] > 100 ||
+        payload['version'] != 3 ||
+        payload['factKind'] != 'offline_output' ||
+        payload['operation'] != 'productionLabel' ||
+        payload['provisional'] != true ||
+        payload['operationId'] != scope['operation_id'] ||
+        payload['productId'] != scope['product_id'] ||
+        payload['product'] != scope['product'] ||
+        payload['unit'] != scope['unit'] ||
+        payload['printerId'] != scope['printer_id'] ||
+        payload['lot'] != 'LOCAL:${payload['reportId']}' ||
+        payload['expiresAt'] != null) {
+      throw const FormatException('Provisional output label scope mismatch');
+    }
+    final proof = jsonDecode(message);
+    if (proof is! Map<String, dynamic> ||
+        proof.length != 5 ||
+        proof['version'] != 1 ||
+        proof['leaseId'] != scope['lease_id'] ||
+        proof['commandId'] != payload['commandId'] ||
+        proof['payloadHash'] != hardwarePayloadHash(payload) ||
+        proof['origin'] != origin ||
+        grant['cnf']?['jwk'] is! Map<String, dynamic> ||
+        !_verifier.verifySignature(
+          Map<String, dynamic>.from(grant['cnf']['jwk']),
+          message,
+          signature,
+        )) {
+      throw const FormatException(
+        'Bound KDS device signature required for measured output',
+      );
+    }
+    BigInt decimal(dynamic value) {
+      if (value is! String ||
+          !RegExp(r'^\d{1,12}(\.\d{1,6})?$').hasMatch(value)) {
+        throw const FormatException(
+          'Explicit bounded decimal measurement required',
+        );
+      }
+      final parts = value.split('.');
+      return BigInt.parse(parts[0]) * BigInt.from(1000000) +
+          BigInt.parse((parts.length == 1 ? '' : parts[1]).padRight(6, '0'));
+    }
+
+    final quantity = decimal(payload['quantity']);
+    final measured = DateTime.tryParse(payload['producedAt'] as String? ?? '');
+    final started = DateTime.tryParse(scope['not_before'] as String? ?? '');
+    final expires = DateTime.tryParse(scope['expires_at'] as String? ?? '');
+    if (quantity <= BigInt.zero ||
+        quantity > decimal(scope['max_quantity_decimal']) ||
+        measured == null ||
+        started == null ||
+        expires == null ||
+        measured.isBefore(started) ||
+        measured.isAfter(now.add(const Duration(seconds: 5))) ||
+        !expires.isAfter(now) ||
+        expires.millisecondsSinceEpoch > (grant['exp'] as int) * 1000) {
+      throw const FormatException(
+        'Measured output exceeds label lease quantity or time bounds',
+      );
+    }
+    await _persist();
     return grant;
   }
 

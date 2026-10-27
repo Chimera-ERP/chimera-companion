@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:forui/forui.dart';
 import 'package:flutter/services.dart';
 import 'package:chimera_companion/tls_setup.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -41,7 +42,7 @@ void main() {
         Theme.of(tester.element(find.text('Configurare'))).brightness,
         Brightness.dark,
       );
-      expect(find.text('3 din 5'), findsOneWidget);
+      expect(find.text('4 din 7'), findsOneWidget);
       expect(find.text('Verifică ECR'), findsOneWidget);
       final buttons = Theme.of(
         tester.element(find.text('Verifică ECR')),
@@ -90,17 +91,64 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
-  testWidgets('Fresh enrollment starts with ERP before TLS and hardware', (
+  testWidgets('Fresh enrollment selects profile before ERP, TLS and hardware', (
     tester,
   ) async {
     await tester.pumpWidget(const CompanionApp());
     await tester.pumpAndSettle();
-    expect(find.text('1 din 5'), findsOneWidget);
+    expect(find.text('1 din 7'), findsOneWidget);
     expect(find.byTooltip('Verifică actualizările'), findsOneWidget);
+    expect(find.text('Cum folosești Companion?'), findsOneWidget);
+    await tester.tap(find.text('Continuă'));
+    await tester.pumpAndSettle();
     expect(find.text('Conectare la Chimera'), findsOneWidget);
     expect(find.text('Verifică ECR'), findsNothing);
     expect(tester.takeException(), isNull);
   });
+  testWidgets(
+    'KDS profile persists and shortens setup without changing hardware',
+    (tester) async {
+      FlutterSecureStorage.setMockInitialValues({
+        'local_hardware_v1': '{"host":"192.168.1.25","model":"tremolM20"}',
+      });
+      await tester.pumpWidget(const CompanionApp());
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('KDS'));
+      await tester.pumpAndSettle();
+      expect(find.text('1 din 6'), findsOneWidget);
+      await tester.tap(find.text('Continuă'));
+      await tester.pumpAndSettle();
+      expect(find.text('2 din 6'), findsOneWidget);
+      final saved = jsonDecode(
+        (await const FlutterSecureStorage().read(key: 'setup_profile_v1'))!,
+      );
+      expect(saved['profile'], 'kds');
+      expect(
+        await const FlutterSecureStorage().read(key: 'local_hardware_v1'),
+        '{"host":"192.168.1.25","model":"tremolM20"}',
+      );
+      await tester.tap(find.byTooltip('Înapoi'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Custom'));
+      await tester.pumpAndSettle();
+      for (final title in [
+        'Casa de marcat',
+        'Terminal de plată',
+        'Cântar',
+        'Imprimantă producție',
+      ]) {
+        final option = find.widgetWithText(CheckboxListTile, title);
+        await tester.scrollUntilVisible(
+          option,
+          80,
+          scrollable: find.byType(Scrollable).first,
+        );
+        expect(tester.widget<CheckboxListTile>(option).value, true);
+      }
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
   testWidgets(
     'network settings expose Wi-Fi and keep manual TLS inside a modal',
     (tester) async {
@@ -159,6 +207,8 @@ void main() {
         await tester.pumpWidget(
           MaterialApp(
             theme: ThemeData.dark(),
+            builder: (_, child) =>
+                FTheme(data: FTheme.neutral.dark.touch, child: child!),
             home: const DeviceSetupPage(initialStep: 2),
           ),
         );
@@ -184,7 +234,7 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Mai târziu'));
         await tester.pumpAndSettle();
-        expect(find.text('4 din 5'), findsOneWidget);
+        expect(find.text('5 din 7'), findsOneWidget);
         expect(find.text('IP local Viva'), findsNothing);
         expect(
           await const FlutterSecureStorage().read(key: 'local_hardware_v1'),
@@ -205,7 +255,10 @@ void main() {
         await tester.pumpAndSettle();
         await tester.tap(find.text('Mai târziu'));
         await tester.pumpAndSettle();
-        expect(find.text('5 din 5'), findsOneWidget);
+        expect(find.text('6 din 7'), findsOneWidget);
+        await tester.tap(find.text('Mai târziu'));
+        await tester.pumpAndSettle();
+        expect(find.text('7 din 7'), findsOneWidget);
         final settings = jsonDecode(
           (await const FlutterSecureStorage().read(key: 'local_hardware_v1'))!,
         );
@@ -244,6 +297,8 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           theme: ThemeData.dark(),
+          builder: (_, child) =>
+              FTheme(data: FTheme.neutral.dark.touch, child: child!),
           home: const DeviceSetupPage(initialStep: 2),
         ),
       );

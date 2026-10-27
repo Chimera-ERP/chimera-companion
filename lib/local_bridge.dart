@@ -32,6 +32,9 @@ import 'hardware/json_transport.dart';
 import 'hardware/runtime.dart';
 import 'hardware/viva_adapter.dart';
 import 'hardware/viva_connection.dart';
+import 'printing/production_print.dart';
+import 'scale_service.dart';
+import 'console/console_service.dart';
 
 const companionOperations = [
   'status',
@@ -64,12 +67,14 @@ class LocalBridge extends ChangeNotifier {
     CommandJournal? journal,
     OfflineSession? security,
     this.paymentFactory,
+    this.printerSend = sendPrinterBytes,
     FiscalDevice Function(Map<String, dynamic>)? deviceFactory,
   }) : _deviceFactory = deviceFactory ?? FiscalDevice.fromSettings {
     _journal = journal;
     _security = security;
   }
   final FiscalDevice Function(Map<String, dynamic>) _deviceFactory;
+  final PrinterSend printerSend;
   bool _hasEcr(Map<String, dynamic>? settings) =>
       settings?['host'] is String &&
       (settings!['host'] as String).trim().isNotEmpty;
@@ -87,6 +92,11 @@ class LocalBridge extends ChangeNotifier {
   final PaymentTerminalAdapter Function(Map<String, dynamic>)? paymentFactory;
   final _executor = HardwareCommandExecutor();
   final _customerDisplay = CustomerDisplay();
+  ScaleService? _scales;
+  ScaleService get scales => _scales ??= ScaleService();
+  ConsoleService? _console;
+  ConsoleService get console => _console ??= ConsoleService();
+  bool _scaleRestored = false;
   CustomerDisplayBundle? _displayBundle;
   Future<void>? _displaySync;
   String? _displayError;
@@ -320,6 +330,9 @@ class LocalBridge extends ChangeNotifier {
       debugLog('Autorizarea locală folosește ultima configurație validată.');
     }
     final server = CompanionServer(
+      console: console,
+      runProductionPrint: runProductionPrint,
+      runProductionLabel: runProductionLabel,
       security: security,
       onAuthorizationError: (reason) async {
         await _diagnostics?.add('authorization_rejected', reason);
@@ -413,6 +426,7 @@ class LocalBridge extends ChangeNotifier {
       'outcome': 'succeeded',
       'message': 'Diagnostic Companion (fără execuție fiscală)',
       'diagnosticVersion': 1,
+      'console': _console?.diagnostics ?? {'connected': false},
       'snapshot': snapshot,
       'operator': {
         for (final name in [
@@ -581,6 +595,22 @@ class LocalBridge extends ChangeNotifier {
             debugLog(
               'Echipamentul nu a putut fi înregistrat în ERP. Verifică asocierea existentă sau conexiunea; comenzile rămân protejate.',
             );
+          }
+        }
+        // Optional printer registration reuses the existing heartbeat. No probe,
+        // discovery or printer worker is started on ECR/Viva-only installations.
+        final printerSettings = await _read('production_printer_v1');
+        if (printerSettings != null) {
+          try {
+            final printer = PrinterConfig.fromJson(printerSettings);
+            await _erp('/api/devices/companion/management/equipment/register', {
+              'kind': 'printer',
+              'name': printer.name,
+              'host': printer.host,
+              'port': printer.port,
+            });
+          } catch (_) {
+            debugLog('Asocierea imprimantei necesită verificare în ERP.');
           }
         }
         await _security!.updateTrust(
@@ -780,6 +810,133 @@ class LocalBridge extends ChangeNotifier {
     }
   }
 
+  Future<Map<String, Object?>> runProductionPrint(
+    String ticket,
+    Map<String, dynamic> payload,
+    String origin,
+  ) async {
+    final security = _security;
+    final journal = _journal;
+    if (security == null || journal == null) {
+      throw const FormatException('Production print trust unavailable');
+    }
+    final job = ProductionPrintJob(payload);
+    final grant = await security.verifyProductionPrint(ticket, payload, origin);
+    return _executeProductionPrint(job, grant, security, journal, () async {
+      await security.verifyProductionPrint(ticket, payload, origin);
+    });
+  }
+
+  Future<Map<String, Object?>> runProductionLabel(
+    Map<String, dynamic> body,
+    String origin,
+  ) async {
+    final security = _security;
+    final journal = _journal;
+    if (security == null || journal == null) {
+      throw const FormatException('Production label trust unavailable');
+    }
+    final payload = Map<String, dynamic>.from(body['payload']);
+    final job = ProductionPrintJob(payload);
+    final grant = await security.verifyProductionLabel(
+      body['lease'],
+      payload,
+      body['message'],
+      body['signature'],
+      origin,
+    );
+    return _executeProductionPrint(job, grant, security, journal, () async {
+      await security.verifyProductionLabel(
+        body['lease'],
+        payload,
+        body['message'],
+        body['signature'],
+        origin,
+      );
+    });
+  }
+
+  Future<Map<String, Object?>> _executeProductionPrint(
+    ProductionPrintJob job,
+    Map<String, dynamic> grant,
+    OfflineSession security,
+    CommandJournal journal,
+    Future<void> Function() authorize,
+  ) async {
+    final payload = job.payload;
+    final saved = await _read('production_printer_v1');
+    if (saved == null) throw const FormatException('Printer is not configured');
+    final config = PrinterConfig.fromJson(saved);
+    var admitted = false;
+    try {
+      final result =
+          await ProductionPrinter(
+            executor: _executor,
+            journal: journal,
+            send: printerSend,
+          ).execute(
+            config,
+            job,
+            audit: {
+              'authorizedActor': grant['sub'],
+              'authorizedDevice': grant['pos'],
+              if (grant['kind'] == 'production-label-lease') ...{
+                'labelLeaseId': grant['session_id'],
+                'maxCommands': grant['labelScope']['max_commands'],
+                'labelDocumentHash': CommandJournal.fingerprint(
+                  config.id,
+                  'provisional-label-document',
+                  Map<String, dynamic>.from(payload)
+                    ..remove('commandId')
+                    ..remove('reprintOf')
+                    ..remove('reprintReason'),
+                ),
+              },
+            },
+            authorize: () async {
+              await authorize();
+              final current = await _read('production_printer_v1');
+              if (busy ||
+                  configurationOpen ||
+                  current == null ||
+                  canonicalJson(current) != canonicalJson(saved) ||
+                  !security.ownsEquipment(
+                    'printer',
+                    config.host,
+                    config.port,
+                  )) {
+                throw const FormatException(
+                  'Printer assignment or configuration changed',
+                );
+              }
+              admitted = true;
+              _executing = true;
+              activeCommand = {'id': job.id, 'operation': job.operation};
+              _changed();
+            },
+          );
+      history = await journal.recent();
+      _changed();
+      return await security.result({
+        ...result,
+        'operatorId': grant['sub'],
+        'deviceId': grant['pos'],
+        'org': security.org,
+        'location': security.location,
+        if (grant['kind'] == 'production-label-lease') ...{
+          'leaseId': grant['session_id'],
+          'reportId': payload['reportId'],
+        },
+      }, hardwarePayloadHash(payload));
+    } finally {
+      if (admitted) {
+        _executing = false;
+        activeCommand = null;
+        _changed();
+      }
+    }
+  }
+
   Future<Map<String, Object?>> run(
     String operation,
     String id,
@@ -884,6 +1041,19 @@ class LocalBridge extends ChangeNotifier {
     Map<String, dynamic> payload,
   ) async {
     if (operation == 'status') {
+      if (!_scaleRestored) {
+        _scaleRestored = true;
+        unawaited(scales.restore());
+      }
+      if (payload['scope'] == 'scale') {
+        return {
+          'outcome': 'succeeded',
+          'companionId': companionId,
+          'locationId': locationId,
+          'message': 'Cântar',
+          'scale': await scales.snapshot(),
+        };
+      }
       await refresh();
       return {
         ...snapshot,
@@ -1931,6 +2101,8 @@ class LocalBridge extends ChangeNotifier {
 
   Future<void> close() async {
     _closed = true;
+    await _scales?.close();
+    await _console?.close();
     if (reportCompanionError == _errorReporter) reportCompanionError = null;
     _timer?.cancel();
     _connectivityTimer?.cancel();

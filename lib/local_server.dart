@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'security/offline_session.dart';
 import 'customer_display_stream.dart';
+import 'console/console_service.dart';
+import 'console/console_stream.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 typedef VerifyTicket = Future<Map<String, dynamic>> Function(String ticket);
@@ -30,8 +32,21 @@ class CompanionServer {
     this.runAuthorized,
     this.onAuthorizationError,
     this.onFailure,
+    this.runProductionPrint,
+    this.runProductionLabel,
+    this.console,
   });
   final RunAuthorizedHardware? runAuthorized;
+  final ConsoleService? console;
+  final Set<WebSocket> _consoleSockets = {};
+  final Future<Map<String, Object?>> Function(Map<String, dynamic>, String)?
+  runProductionLabel;
+  final Future<Map<String, Object?>> Function(
+    String,
+    Map<String, dynamic>,
+    String,
+  )?
+  runProductionPrint;
   final Future<void> Function(String)? onAuthorizationError;
   final Future<void> Function(String, String)? onFailure;
   final VerifyTicket verify;
@@ -63,6 +78,9 @@ class CompanionServer {
   }
 
   Future<void> close() async {
+    for (final socket in _consoleSockets.toList()) {
+      await socket.close(WebSocketStatus.goingAway);
+    }
     for (final socket in _displaySockets.toList()) {
       await socket.close(WebSocketStatus.goingAway);
     }
@@ -124,12 +142,43 @@ class CompanionServer {
         return;
       }
       if (request.method == 'OPTIONS' &&
-          ['/v1/commands', '/v2/challenge'].contains(request.uri.path)) {
+          [
+            '/v1/commands',
+            '/v2/challenge',
+            '/v1/production-print',
+            '/v1/production-label',
+          ].contains(request.uri.path)) {
         await reply(200, {});
         return;
       }
       if (request.method == 'GET' && request.uri.path == '/health') {
         await reply(200, {'service': 'chimera-companion', 'version': 1});
+        return;
+      }
+      if (request.method == 'GET' && request.uri.path == '/v1/kds-console') {
+        if (security == null ||
+            console == null ||
+            !console!.connected ||
+            origin == null ||
+            url == null ||
+            !(url.scheme == 'https' ||
+                (url.scheme == 'http' &&
+                    ['localhost', '127.0.0.1', '::1'].contains(url.host))) ||
+            !WebSocketTransformer.isUpgradeRequest(request)) {
+          await reply(403, {'error': 'Consolă HTTPS autorizată necesară'});
+          return;
+        }
+        if (_consoleSockets.isNotEmpty) {
+          await reply(409, {'error': 'Consola este folosită de alt KDS'});
+          return;
+        }
+        final socket = await WebSocketTransformer.upgrade(request);
+        _consoleSockets.add(socket);
+        try {
+          await serveConsole(socket, origin, security!, console!);
+        } finally {
+          _consoleSockets.remove(socket);
+        }
         return;
       }
       if (request.method == 'GET' && request.uri.path == '/customer-display') {
@@ -176,7 +225,12 @@ class CompanionServer {
         return;
       }
       if (request.method != 'POST' ||
-          !['/v1/commands', '/v2/challenge'].contains(request.uri.path)) {
+          ![
+            '/v1/commands',
+            '/v2/challenge',
+            '/v1/production-print',
+            '/v1/production-label',
+          ].contains(request.uri.path)) {
         await reply(404, {'error': 'Not found'});
         return;
       }
@@ -196,6 +250,65 @@ class CompanionServer {
         }
       }
       final body = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+      if (request.uri.path == '/v1/production-label') {
+        if (runProductionLabel == null || url.scheme != 'https') {
+          await reply(403, {
+            'error': 'Provisional label authorization unavailable',
+          });
+          return;
+        }
+        try {
+          if (body.length != 4 ||
+              body['lease'] is! String ||
+              body['payload'] is! Map<String, dynamic> ||
+              body['message'] is! String ||
+              body['signature'] is! String) {
+            throw const FormatException('Invalid label envelope');
+          }
+          await reply(200, await runProductionLabel!(body, origin));
+        } on FormatException catch (error) {
+          await reply(403, {
+            'error': error.message.startsWith('Câmpul ')
+                ? error.message
+                : 'Provisional label scope or device proof rejected',
+          });
+        } on StateError {
+          await reply(409, {
+            'error': 'Label identity, report, reprint or lease limit conflict',
+          });
+        }
+        return;
+      }
+      if (request.uri.path == '/v1/production-print') {
+        if (runProductionPrint == null || url.scheme != 'https') {
+          await reply(403, {
+            'error': 'Production printing authorization unavailable',
+          });
+          return;
+        }
+        try {
+          if (body.length != 2 ||
+              body['ticket'] is! String ||
+              body['payload'] is! Map<String, dynamic>) {
+            throw const FormatException('Invalid print envelope');
+          }
+          await reply(
+            200,
+            await runProductionPrint!(body['ticket'], body['payload'], origin),
+          );
+        } on FormatException catch (error) {
+          await reply(403, {
+            'error': error.message.startsWith('Câmpul ')
+                ? error.message
+                : 'Production print authorization or payload rejected',
+          });
+        } on StateError {
+          await reply(409, {
+            'error': 'Print identity conflict or queue unavailable',
+          });
+        }
+        return;
+      }
       final session = security;
       if (session != null) {
         if (request.uri.path == '/v2/challenge') {

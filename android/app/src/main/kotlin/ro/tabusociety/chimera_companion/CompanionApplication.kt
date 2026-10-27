@@ -15,9 +15,11 @@ class CompanionApplication : Application() {
     val customerDisplay by lazy { CustomerDisplay(this) }
     val engine: FlutterEngine by lazy {
         FlutterEngine(this).also {
+            ConsoleUsb(this, it.dartExecutor.binaryMessenger)
             MethodChannel(it.dartExecutor.binaryMessenger, "chimera/settings")
                 .setMethodCallHandler { call, result ->
-                    if (call.method != "open") result.notImplemented()
+                    if (call.method == "sdkInt") result.success(android.os.Build.VERSION.SDK_INT)
+                    else if (call.method != "open") result.notImplemented()
                     else try {
                         CompanionSettings.open(this, call.argument<String>("page") ?: "")
                         result.success(null)

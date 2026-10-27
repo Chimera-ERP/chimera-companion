@@ -3,6 +3,42 @@
   "repository": "chimera-companion",
   "tests": [
     {
+      "id": "chimera-companion:6357e0abb670f184490e",
+      "repository": "chimera-companion",
+      "source": "test/acaia_protocol_test.dart",
+      "title": "acaia_protocol_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/acaia_protocol_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:2e393945b0f04eca6af5",
+      "repository": "chimera-companion",
+      "source": "test/acaia_scale_test.dart",
+      "title": "acaia_scale_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/acaia_scale_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:95ecfe461781ba275460",
       "repository": "chimera-companion",
       "source": "test/adapters_test.dart",
@@ -125,6 +161,63 @@
       "command": "flutter test test/connectivity_client_test.dart",
       "metadataStatus": "needs-classification",
       "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:eb55b32dcac9c40d3ea4",
+      "repository": "chimera-companion",
+      "source": "test/console_diagnostics_test.dart",
+      "title": "console_diagnostics_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Diagnostic keys5/10 page navigation, randomized other keys, test/KDS mutual exclusion, in-flight/disconnect safety and opaque black rendered PNGs; console screen layout",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/console_diagnostics_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic USB; actual display contrast and physical navigation require user trial",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:e5cceba135a6d14f5f35",
+      "repository": "chimera-companion",
+      "source": "test/console_stream_test.dart",
+      "title": "console_stream_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Real loopback TLS/WebSocket rejects copied grants without device proof and carries current-view presses and same-identity renewal",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/console_stream_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic USB/signing keys; not LAN or physical-device acceptance",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:ec1bd4dd042c10801438",
+      "repository": "chimera-companion",
+      "source": "test/console_test.dart",
+      "title": "console_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Ulanzi framing/ZIP/barriers, held-key suppression, fresh one-shot console views and scoped signed short-lived authorization",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/console_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic USB and cryptographic identities; physical firmware qualification pending",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -511,6 +604,44 @@
       ]
     },
     {
+      "id": "chimera-companion:eb1bc1c621dc3d09315f",
+      "repository": "chimera-companion",
+      "source": "test/niimbot_test.dart",
+      "title": "niimbot_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "NIIMBOT framing, bounded model identification, row encoding, print task rejection, fixed raster and shared authorized durable idempotency",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/niimbot_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Simulated Bluetooth transport; physical printer qualification pending",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:9e0f52a9a8418ff5a92e",
+      "repository": "chimera-companion",
+      "source": "test/niimbot_wizard_test.dart",
+      "title": "niimbot_wizard_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Bluetooth printer selection and persistence with real application theme in portrait, landscape and wide layouts",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/niimbot_wizard_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Mocked discovery and secure storage; rendered Flutter harness, not a physical iMin",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:df492f7dfb6939ed952f",
       "repository": "chimera-companion",
       "source": "test/offline_grant_test.dart",
@@ -691,6 +822,44 @@
       ]
     },
     {
+      "id": "chimera-companion:ae2a235f5c860610be1f",
+      "repository": "chimera-companion",
+      "source": "test/printer_settings_test.dart",
+      "title": "printer_settings_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Optional printer settings loading, narrow layout, validation, persistence and enrollment/ECR identity preservation",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/printer_settings_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Flutter widget harness; no manual browser or hardware inspection",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:7648569bf833e207608e",
+      "repository": "chimera-companion",
+      "source": "test/production_print_test.dart",
+      "title": "production_print_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Bounded ESC/POS/ZPL templates, Romanian transliteration, signed production scope, durable duplicate/restart handling, queue admission and explicit reprints",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/production_print_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic identities and mocked printer sends; no physical printer acceptance",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:4c394018b66da81d9c05",
       "repository": "chimera-companion",
       "source": "test/protocols_test.dart",
@@ -705,6 +874,25 @@
       "command": "flutter test test/protocols_test.dart",
       "metadataStatus": "needs-classification",
       "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:b392d31f085391157a21",
+      "repository": "chimera-companion",
+      "source": "test/provisional_label_test.dart",
+      "title": "provisional_label_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Real TLS and ES256 ERP lease plus KDS device proof authorize measured provisional output; scope, quantity, local-lot, expiry, duplicate report, exact reprint and durable command-limit enforcement",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/provisional_label_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Loopback HTTPS and synthetic keys with mocked printer sends; no real LAN printer or statutory acceptance",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -739,6 +927,78 @@
       "ruleIds": [],
       "scenarioIds": [],
       "command": "flutter test test/sale_lifecycle_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:f62565ec5636be501f7d",
+      "repository": "chimera-companion",
+      "source": "test/scale_page_test.dart",
+      "title": "scale_page_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/scale_page_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:8632fd55c972be89889f",
+      "repository": "chimera-companion",
+      "source": "test/scale_test.dart",
+      "title": "scale_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/scale_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:b7e9edefd48672b8152e",
+      "repository": "chimera-companion",
+      "source": "test/setup_profile_test.dart",
+      "title": "setup_profile_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/setup_profile_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:e44e09c5957baa953242",
+      "repository": "chimera-companion",
+      "source": "test/setup_visual_test.dart",
+      "title": "setup_visual_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/setup_visual_test.dart",
       "metadataStatus": "needs-classification",
       "limitations": [
         "Native file inventory; individual outcomes require Flutter reporter evidence."

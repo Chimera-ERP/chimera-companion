@@ -1,5 +1,69 @@
 # Vendor protocol provenance
 
+## Ulanzi D200-family USB console
+
+Protocol references: [racerxdl device implementation](https://github.com/racerxdl/ulanzi-d200-linux/blob/main/ulanzi_manager/device.py)
+and [open-ulanzi-d200 protocol documentation](https://github.com/mindlss/open-ulanzi-d200/blob/main/docs/en.md).
+These are third-party reverse-engineered protocol descriptions, not vendor certification.
+Chimera implements framing and semantic rendering independently in Dart/Kotlin, without
+bundling upstream software, device firmware, or desktop configuration profiles. Only the
+observed2207:0019 custom HID interface is selected; the boot keyboard is not claimed.
+Model/firmware and USB power requirements remain a physical acceptance gate.
+The [screen builder reference](https://github.com/mindlss/open-ulanzi-d200/blob/main/src/screen-builder.js)
+also names image assets by content. Chimera uses SHA256 PNG paths to prevent stale per-slot
+image reuse; this mitigates a cache risk, not proof that caching caused a particular device report.
+
+## NIIMBOT BLE
+
+Reference: https://github.com/MultiMote/niimbluelib/tree/a9bc3f5c20c95e3a31ea3f5f2302ce7b27c34abe
+and https://github.com/MultiMote/niimblue. Framing, model IDs, B1/D110 task
+sequences and bitmap count encoding are implemented in Dart; no web runtime
+or vendor firmware is bundled. MIT, Copyright (c) 2024 MultiMote; the MIT
+permission and warranty notice reproduced below applies to this port too.
+The upstream README additionally describes educational use and recommends vendor
+consent for commercial use; this implementation is not a legal/redistribution
+review. Hardware/model qualification remains pending.
+
+## Acaia BLE
+
+Protocol reference: https://github.com/gaggimate/esp-arduino-ble-scales/blob/v1.0.7/src/scales/acaia.cpp
+Used for UUIDs, framing, handshake, heartbeat and weight decoding; no Arduino
+runtime is bundled. Flutter BLE transport uses flutter_reactive_ble (BSD-3-Clause)
+and permission_handler (MIT). BLE packages are pinned together at 5.4.0 and
+permission_handler at major12: newer releases require SDK37, while this project
+builds against SDK36. The repository Gradle configuration aligns the pinned BLE
+library's compileSdk33 with SDK36, required by Flutter's resolved AndroidX
+dependencies; target/min SDK are unchanged and the global pub cache is unmodified.
+Android implementation; iOS is not configured here.
+No physical-model or legal-for-trade qualification is claimed.
+
+Unit-setting protocol reference: Apollo2 `src/core/scale_driver_acaia.cpp`, commit
+`f4d2b29ae858e7196d2466a48ddbf4da057cd520`:
+https://github.com/mlsorensen/Apollo2/blob/f4d2b29ae858e7196d2466a48ddbf4da057cd520/src/core/scale_driver_acaia.cpp
+Used for cmd10 setting IDs/values and generation-specific status offsets; no
+Apollo runtime bundled. Automatic readback and bounded attempts are implemented
+in our existing adapter. Physical qualification remains pending.
+
+MIT License — Copyright (c) 2023 kstam; Copyright (c) 2026 Marcus (Apollo2)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
 ## iMin customer display
 
 Reference: https://oss-sg.imin.sg/docs/en/CustomerDisplay.html
