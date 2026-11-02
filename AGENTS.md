@@ -1,6 +1,6 @@
 # chimera-companion development
 
-<!-- BEGIN GENERATED CONTRACT 9ae22483c7427c0505db10514e9fdfa967d38a56e3d35be76b57d18d013ae12e -->
+<!-- BEGIN GENERATED CONTRACT 451bfc66442c79fbc81c3b4fec5ec3cbb3cef2b2ab37c2f4a8955f239720feda -->
 # Development contract
 
 Status: current. Owner: maintainers of the affected repositories.
@@ -19,6 +19,7 @@ This contract applies to people and coding agents. Repository AGENTS.md files co
 - Keep business logic in its owning service. UI, verification blocks and hardware adapters must call the existing behavior rather than copy calculations.
 - PostgreSQL business access belongs to domain SQL functions, declared in versioned SQL files. TypeScript authenticates, validates transport contracts, calls typed routines and performs external I/O; it must not build table queries or duplicate persistent business calculations. Reuse existing routines and triggers. Preserve atomicity, tenant scope, revisions, idempotency and audit steps. Runtime SQL exceptions are explicit infrastructure or read-only external-source adapters, never a generic SQL escape hatch. Run the SQL-boundary check; existing migration debt may decrease but new inline SQL must not be added.
 - Reuse shadcn controls and existing layout primitives. Do not nest decorative cards in cards, dialogs, sheets or drawers, including equivalent div wrappers.
+- Keep global search discoverability current in the same change: added, renamed, moved or removed pages/actions must update their existing router handles, navigation permissions and EN/RO i18n keys. Reuse the router-derived search index; never maintain a duplicate hand-written action catalogue. Verify that the relevant page and action can be found, and that unauthorized actions remain hidden.
 - Enforce organization, location, actor and permissions on the server. Preserve transactions, idempotency, historical records and compatibility for stock, money and documents.
 - Deliver schema changes through reproducible migrations owned by the correct repository. Do not repair only the local database.
 - Update the canonical document when behavior changes. Index new documents; use an ADR only for a durable decision. Do not create per-turn FINAL, COMPLETE, SUMMARY or PROGRESS documents.
