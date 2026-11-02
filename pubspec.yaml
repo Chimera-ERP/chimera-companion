@@ -1,7 +1,7 @@
 name: chimera_companion
 description: "Local hardware companion for Chimera ERP and POS."
 publish_to: 'none'
-version: 0.1.39+41
+version: 0.1.42+44
 
 environment:
   sdk: ^3.12.2

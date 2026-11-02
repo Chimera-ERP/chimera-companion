@@ -8,12 +8,19 @@ import 'money.dart';
 import 'tcp_transport.dart';
 import 'tremol_adapter.dart';
 import 'command_journal.dart';
+import 'datecs_receipt_recovery.dart';
 
 /// One application contract. Protocol detection never falls back after a write.
 class FiscalDevice {
   FiscalDevice(this.connection, {this.profile = DatecsProfile.auto});
   final FiscalConnection connection;
   final DatecsProfile profile;
+  Future<void> Function(Map<String,dynamic>)? receiptCheckpoint;
+  Future<HardwareResult> reconcileReceipt(String commandId,Map<String,dynamic>? evidence) async {
+    if(_tremol)return TremolAdapter(connection).reconcileReceipt(commandId,evidence);
+    if(['asciiMx','rouMx'].contains(evidence?['profile']))return DatecsReceiptRecovery.read(connection.endpoint,commandId,evidence);
+    return const HardwareResult(CommandOutcome.unknown,message:'Rezultatul Datecs necesită verificare în jurnalul electronic. Bonul nu este retrimis.');
+  }
   DatecsProfile? _detectedProfile;
   String get id =>
       '${connection.model.name}:${connection.endpoint.host}:${connection.endpoint.port}';
@@ -163,7 +170,7 @@ class FiscalDevice {
     if(receipt.documentMode=='nonfiscal')return nonFiscalSale(receipt);
     if(!_tremol&&receipt.claimToken!=null)return const HardwareResult(CommandOutcome.rejected,message:'Codul de fidelitate nu este implementat pentru acest adaptor Datecs');
     if(!_tremol && receipt.cui!=null)return const HardwareResult(CommandOutcome.rejected,message:'CUI fiscal nu este încă implementat pentru acest model Datecs');
-    if (_tremol) return TremolAdapter(connection).printReceipt(receipt);
+    if (_tremol) return TremolAdapter(connection,checkpoint:receiptCheckpoint).printReceipt(receipt);
     final state = await DatecsDeviceClient(
       connection.endpoint,
       profile: profile,
@@ -184,7 +191,7 @@ class FiscalDevice {
         message: 'Protocol Datecs neidentificat',
       );
     }
-    return DatecsMxFiscalAdapter(connection).printReceipt(receipt);
+    return DatecsMxFiscalAdapter(connection,checkpoint:receiptCheckpoint).printReceipt(receipt);
   }
   Future<HardwareResult> nonFiscalSale(FiscalReceipt receipt) async {
     final lines=<String>['DOCUMENT NEFISCAL',...receipt.lines.map((l)=>'${l.name.replaceAll(RegExp(r"[^ -~]"),"?").substring(0,l.name.length>24?24:l.name.length)} x ${l.quantityDecimal}'),...receipt.lines.map((l)=>'  ${minorToDecimal(l.grossTotalMinor)} RON'),'TOTAL ${minorToDecimal(receipt.totalMinor)} RON',...receipt.payments.map((p)=>'${p.method.name.toUpperCase()} ${minorToDecimal(p.amountMinor)} RON'),if(receipt.claimToken!=null)'Fidelity: ${receipt.claimToken}'];
@@ -212,12 +219,13 @@ void validateNonFiscalLines(List<String> lines) {
   }
 }
 
-/// DATECS protocol v2.11.4: explicit fields, subtotal and payment confirmation.
+/// DATECS MX: common framing; Romanian 2017 and Bulgarian response schemas.
 class DatecsMxFiscalAdapter {
-  DatecsMxFiscalAdapter(this.connection, {SessionFactory? sessions})
+  DatecsMxFiscalAdapter(this.connection, {SessionFactory? sessions, this.checkpoint})
     : _sessions = sessions ?? TcpByteSession.connect;
   final FiscalConnection connection;
   final SessionFactory _sessions;
+  final Future<void> Function(Map<String,dynamic>)? checkpoint;
   Future<HardwareResult> printReceipt(FiscalReceipt receipt) async {
     if (receipt.payments.any((p)=>!RegExp(r'^[0-5]$').hasMatch(connection.paymentCode(p.method)))) {
       throw ArgumentError('Numeric Datecs MX payment code required');
@@ -255,11 +263,22 @@ class DatecsMxFiscalAdapter {
           message: 'Document deja deschis pe Datecs',
         );
       }
+      final (serial, fiscalSerial) = await DatecsReceiptRecovery.identity(send);
+      final evidence = <String,dynamic>{'profile':'asciiMx','commandId':receipt.commandId,'serialNumber':serial,'fiscalSerialNumber':fiscalSerial};
+      await checkpoint?.call(evidence);
       dispatched = true;
-      await send(
+      final opened = await send(
         48,
         '${connection.operatorNumber}\t${connection.operatorPassword}\t${connection.tillNumber}\t\t',
       );
+      if(![2,4].contains(opened.length)||!DatecsReceiptRecovery.number(opened[1],99999999))throw const FormatException('Receipt number missing');
+      evidence['receiptNumber']=opened[1];
+      if(opened.length==4){
+        if(!DatecsReceiptRecovery.number(opened[2],2500)||!RegExp(r'^[0-9]{1,4}$').hasMatch(opened[3]))throw const FormatException('Romanian receipt identity missing');
+        evidence['profile']='rouMx';
+        evidence['zNumber']=opened[2];
+      }
+      await checkpoint?.call(evidence);
       for (final line in receipt.lines) {
         await send(
           49,
@@ -271,19 +290,35 @@ class DatecsMxFiscalAdapter {
           decimalToMinor(subtotal[2]) != receipt.totalMinor) {
         throw StateError('Subtotal differs');
       }
+      for(final marker in DatecsReceiptRecovery.markers(receipt.commandId)) {
+        // RO: keep separators for optional style/alignment fields, including
+        // the final reserved field documented by FP_Protocol_RO command54.
+        await send(54,evidence['profile']=='rouMx'?'$marker\t\t\t\t\t\t\t':'$marker\t');
+      }
       var remaining=receipt.totalMinor;
       for(final tender in receipt.payments){
         final payment=await send(53,'${connection.paymentCode(tender.method)}\t${minorToDecimal(tender.amountMinor)}\t');
         remaining-=tender.amountMinor;
         if(payment.length<3||decimalToMinor(payment[2])!=remaining||(remaining==0&&payment[1]!='R'))throw StateError('Payment not confirmed');
       }
+      // Persist before dispatch: a lost close ACK can be reconciled by exact EJ identity.
+      evidence['closeAttempted']=true;
+      await checkpoint?.call(evidence);
       final closed = await send(56, '');
-      if (closed.length < 2 || !RegExp(r'^\d+$').hasMatch(closed[1])) {
+      if (![2,4].contains(closed.length) || closed[1] != opened[1] ||
+          (evidence['profile']=='rouMx' && (closed.length!=4 || closed[2]!=evidence['zNumber'])) ||
+          (closed.length==4 && (!DatecsReceiptRecovery.number(closed[2],2500)||!DatecsReceiptRecovery.number(closed[3],9999)))) {
         throw const FormatException('Receipt identity missing');
       }
+      // RO nFNum is the fiscal number in nZrep, not the global SlipNumber.
+      final identity=<String,String>{'serialNumber':serial,'fiscalSerialNumber':fiscalSerial,
+        'documentNumber':closed[1], 'receiptNumber':closed.length==4?closed[3]:closed[1],
+        if(closed.length==4)'zNumber':closed[2]};
+      await checkpoint?.call({...evidence,'closed':true,'fiscalIdentity':identity});
       return HardwareResult(
         CommandOutcome.succeeded,
-        reference: closed[1],
+        reference: identity['receiptNumber'],
+        fiscalIdentity: identity,
         message: 'Bon confirmat de Datecs',
       );
     } catch (_) {

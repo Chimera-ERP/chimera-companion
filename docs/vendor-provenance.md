@@ -91,6 +91,12 @@ M20/FP21 firmware compatibility remains a hardware qualification item.
 
 Protocol PDF was read with text extraction. It is not bundled into the app.
 
+2026-10-27 reconciliation reference: RO2601151250 60h (serial), 71h (last receipt)
+and 7Ch (`J0;N;start;end`, six-digit receipt bounds). The vendor JS demo reads the
+EJ stream through `RawRead(0,"@")`. Our bounded framed-stream parser is independent;
+no Tremol runtime is imported. This readback and the additional receipt text markers
+require physical M20/FP21 qualification before treating them as production-supported.
+
 ## Datecs Romania SDK
 
 Official DP-25 downloads: https://www.datecs.bg/en/products/162
@@ -123,7 +129,31 @@ The current parser tests use synthetic replies. Print validation against the
 previously working hardware remains required; these tests do not establish
 that every DP-25 firmware speaks the gateway's protocol.
 
+## Datecs ASCII-MX reconciliation
+
+Romanian MX primary reference: official DUDE1.1.0.0 distribution from
+https://www.datecs.ro/dude.html — download
+https://www.datecs.ro/_res/media/support/dude-setup-2020-07-30v1-1-0-0.zip
+(SHA256 `d30da29ac93fec4cb8c27d9227d5e613d1044f741edb659a9f29ffb4548f5c7a`).
+Read `DOCUMENTATION/FP_Protocol_RO.pdf`, 29.11.2017, SHA256
+`b35635d0ada8ba3134012d520fbb0758762220893556053e78ee827c8ea78539`.
+Commands48/56 return SlipNumber/nZrep/nFNum; 123/1 identifies the manufacturer and
+fiscal serial; 125/0 has seven fields and fiscal addressing Z*10000+receipt.
+Reviewed the Romanian PDF schema and corresponding English reference in that
+same bundle. No DUDE executable was run or bundled; no new vendor library added.
+The current Romanian DP-25mx uses MX framing, not the 2014 DP25ROU binary SDK.
+Recovery is tested with synthetic framed replies and durable journal restarts;
+physical firmware qualification remains pending.
+
+Datecs ASCII-MX EJ recovery uses the primary protocol reference
+https://www.datecs.bg/en/downloads/pdf?id=PM_FMP350X_FMP55X_FP700X-BUL_+FPprotocol_v2.00_eng.pdf
+(commands48/54/56/123/125). This is a Bulgarian X-series reference for the explicit
+ASCII profile, not proof of support on every Romanian DP-25. We did not import a
+new vendor library or send these commands through the legacy Romanian SDK.
+Unsupported firmware stays unknown, never automatically reissued.
+
 ## Viva
+
 
 https://developer.viva.com/apis-for-point-of-sale/card-terminals-devices/peer-to-peer-communication/point-to-point-protocol-rest-api/
 

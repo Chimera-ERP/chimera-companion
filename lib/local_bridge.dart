@@ -1066,6 +1066,7 @@ class LocalBridge extends ChangeNotifier {
         'paymentStartProofVersion': 1,
         'saleAdmissionLifecycleVersion': 1,
         'commandRecoveryVersion': 1,
+        'offlineShiftCloseVersion': 1,
         'customerDisplayVersion': 1,
         'customerDisplayStreamVersion': 1,
         'customerDisplay': await _customerDisplay.status(),
@@ -1577,12 +1578,22 @@ class LocalBridge extends ChangeNotifier {
       // Operator changes have their own recoverable multi-phase journal.
       if (device != null &&
           !['operatorLogin', 'operatorLogout'].contains(operation)) {
-        final recorded = await journal.lookup(
+        var recorded = await journal.lookup(
           id: id,
           deviceId: device.id,
           operation: operation,
           payload: Map<String, dynamic>.from(payload)..remove('checkoutPolicy'),
         );
+        if(recorded?.outcome==CommandOutcome.unknown&&operation=='fiscalReceipt'){
+          final business=Map<String,dynamic>.from(payload)..remove('checkoutPolicy');
+          final hash=CommandJournal.fingerprint(device.id,operation,business);
+          final evidence=await _read('receipt_${CommandJournal.fingerprint(device.id,id,{})}_$hash');
+          if(evidence?['closed']==true || evidence?['closeAttempted']==true){
+            recorded=await journal.execute(id:id,deviceId:device.id,operation:operation,payload:business,recoveryOnly:true,
+              reconcile:()=>device.reconcileReceipt(id,evidence),
+              dispatch:() async=>throw StateError('Recovery cannot print'));
+          }
+        }
         if (recorded != null) {
           return {
             'outcome': recorded.outcome.name,
@@ -1801,14 +1812,10 @@ class LocalBridge extends ChangeNotifier {
               ),
             );
         if (payload['recoveryOnly'] == true) {
-          final recorded = await journal.lookup(
-            id: id,
-            deviceId: '${endpoint.host}:${endpoint.port}',
-            operation: 'payment',
-            payload: {
-              'vendor': adapter.vendor,
-              'amountMinor': paymentRequest.amountMinor,
-              'currency': paymentRequest.currency,
+          final recorded = await HardwareRuntime(journal).payment(
+            '${endpoint.host}:${endpoint.port}', adapter, paymentRequest,
+            recoveryOnly: true,
+            binding: {
               if (operation == 'payment') ...{
                 'saleId': payload['saleId'],
                 'receiptCommandId': payload['receiptCommandId'],
@@ -1816,16 +1823,9 @@ class LocalBridge extends ChangeNotifier {
               },
             },
           );
-          if (recorded == null) {
-            return {
-              'outcome': 'unknown',
-              'message':
-                  'Rezultatul plății nu există în jurnal. Recuperarea nu inițiază o plată nouă.',
-            };
-          }
           return {
             'outcome': recorded.outcome.name,
-            'journalFound': true,
+            'journalFound': await journal.containsCommandId(id),
             'reference': recorded.reference,
             'message': recorded.message,
             if (operation == 'payment' &&
@@ -1937,6 +1937,11 @@ class LocalBridge extends ChangeNotifier {
           };
         }
       } else {
+        if(operation=='fiscalReceipt'){
+          final hash=CommandJournal.fingerprint(device!.id,operation,Map<String,dynamic>.from(payload)..remove('checkoutPolicy'));
+          final evidenceKey='receipt_${CommandJournal.fingerprint(device.id,id,{})}_$hash';
+          device.receiptCheckpoint=(evidence)=>_write(evidenceKey,evidence);
+        }
         result = await journal.execute(
           id: id,
           deviceId: device!.id,

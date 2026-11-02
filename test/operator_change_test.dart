@@ -93,6 +93,14 @@ void main() {
     await workflow().logout('ecr','exit',payload);
     expect(reportCount,1);
   });
+  test('offline closure evidence cannot be replayed with changed counts',()async{
+    final count={...payload,'shiftClose':{'shiftId':'shift','denominations':{'100':1}}};
+    expect((await workflow().logout('ecr','shift-close-shift',count))['outcome'],'succeeded');
+    journal=CommandJournal(File('${dir.path}/journal'));
+    await workflow().logout('ecr','shift-close-shift',count);
+    await expectLater(workflow().logout('ecr','shift-close-shift',{...payload,'shiftClose':{'shiftId':'shift','denominations':{'100':2}}}),throwsStateError);
+    expect(reportCount,1);
+  });
   for (final outcome in [CommandOutcome.succeeded, CommandOutcome.unknown]) {
     test('legacy scoped report ${outcome.name} migration preserves uncertainty', () async {
       final identity = {'operatorId': 'admin-id', 'operatorName': 'admin'};

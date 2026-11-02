@@ -405,6 +405,56 @@ an uncertain action uses this read-only recovery flow rather than redispatch.
 Build 0.1.17+19 additionally keeps missing fiscal-receipt results unknown, rather
 than interpreting journal absence as a rejection. No fiscal command is dispatched.
 
+### Peripheral reconciliation
+
+Status advertises `offlineShiftCloseVersion: 1`. An authorized `operatorLogout`
+may include `shiftClose` (shift ID, original revision, closing time, answers and
+denominations). It is part of the immutable logout journal fingerprint and the
+signed response payload hash, so changing a count cannot reuse an earlier report.
+POS stores that response in its existing outbox; synchronization to ERP has no
+hardware effects. Unknown logout retains the original ID and never repeats a reset.
+
+Unknown payment results can be reconciled under the durable executor's same lock
+and exact request fingerprint. Viva queries the original session UUID using GET;
+it does not POST another sale. Session/type, amount and merchant reference must
+match. A missing/unavailable session remains unknown. Confirmed/rejected terminal
+results retain the existing signed evidence and persist across restarts.
+
+Tremol RO2601151250 records the serial/Z/receipt counter before opening a new
+receipt, prints three `CHM` text lines encoding the command-ID SHA256, and persists
+the successful close acknowledgement before reading back the receipt identity.
+Recovery reads the individual EJ receipt via 7Ch only when that close checkpoint
+exists. Serial, Z, next receipt number and all three markers must match. Counter
+increments or equal totals alone are never evidence. Lost close ACK, a changed Z,
+another intervening receipt, missing checkpoints/markers or malformed streams stay
+unknown. No receipt, cancellation, payment or report is emitted by recovery.
+The stream is bounded and checksum-validated. Firmware compatibility is **not yet
+physically qualified**; synthetic framing tests are not hardware acceptance.
+
+Datecs MX (including DP-25mx Romania) checkpoints the original serial/slip before close and writes
+four fiscal-text fragments of the command SHA256. Recovery reads device123/1,
+status76, then exact EJ document125/0 and text125/1. All fragments, serial, global
+document identity and fiscal type must match. No print option, payment or close is
+issued during recovery. This can resolve a lost close ACK even after later sales;
+cancelled documents, missing markers and malformed reads remain unknown.
+Romanian MX is **not** the pre-MX `legacyRou` binary SDK. It uses the same ASCII
+frame but the Romanian response schema from DUDE's FP_Protocol_RO (29.11.2017):
+48/56 return global SlipNumber plus nZrep/nFNum in fiscal mode; 125/0 returns
+seven fields, including RecReport before RecNumber. Recovery selects the original
+global document with DocType0, then selects `Z*10000+receipt` with DocType1 and
+cross-checks global number, report, fiscal number, date, fiscal type and all markers.
+Manufacturer and fiscal serial are bound to new checkpoints. Normal success and
+recovery return the fiscal number **within Z**, with the global number separate.
+Stored `asciiMx` checkpoints from 0.1.40 remain recoverable using the strict
+seven-field Romanian schema; checkpoints identified as `rouMx` cannot downgrade
+to the six-field schema. Missing/invalid identity stays unknown. No fallback
+printing or payment is possible in reconciliation. Test/training-mode two-field
+responses are not invented into a Romanian fiscal identity.
+This protocol is fixture-tested, not physically qualified on Romanian hardware.
+The pre-MX 2014 binary SDK (`legacyRou`, not DP-25mx Romania) still recovers durable
+Companion results only; lost results without confirmation require investigation.
+External/manual card terminals likewise cannot be automatically reconciled as Viva.
+
 ## Presence and UI
 
 ### Drawer safety and cash operations

@@ -39,7 +39,8 @@ class OperatorChange {
   }
 
   Future<Map<String, Object?>> logout(String device, String id, Map<String, dynamic> payload) async {
-    final identity = {'operatorId': payload['operatorId'], 'operatorName': payload['operatorName']};
+    final identity = {'operatorId': payload['operatorId'], 'operatorName': payload['operatorName'],
+      if(payload['shiftClose']!=null)'shiftClose':payload['shiftClose']};
     final previous = await journal.lookup(id: id, deviceId: device,
       operation: 'operatorLogout', payload: identity);
     final active = await read(sessionKey(device));

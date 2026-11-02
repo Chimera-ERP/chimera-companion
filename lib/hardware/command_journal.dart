@@ -195,6 +195,8 @@ class CommandJournal {
     required String operation,
     required Map<String, Object?> payload,
     required Future<HardwareResult> Function() dispatch,
+    Future<HardwareResult> Function()? reconcile,
+    bool recoveryOnly = false,
   }) async {
     if (id.isEmpty || deviceId.isEmpty || operation.isEmpty) {
       throw ArgumentError('Missing command identity');
@@ -252,6 +254,23 @@ class CommandJournal {
         if (previous['hash'] != digest) {
           throw StateError('Idempotency key reused with a different payload');
         }
+        if (!['succeeded', 'rejected'].contains(previous['outcome']) && reconcile != null) {
+          // Same file/device/payload lock as dispatch. Reconciliation may only
+          // read the original operation; it never calls dispatch or changes ID.
+          HardwareResult recovered;
+          try { recovered = await reconcile(); }
+          catch (_) { recovered = const HardwareResult(CommandOutcome.unknown,
+            message: 'Dispozitivul nu a confirmat rezultatul. Nu retrimite comanda.'); }
+          await handle.writeString('${jsonEncode({
+            ...previous, 'id': id, 'hash': digest, 'deviceId': deviceId,
+            'operation': operation, 'at': DateTime.now().toUtc().toIso8601String(),
+            'outcome': recovered.outcome.name, 'reference': recovered.reference,
+            'message': recovered.message, 'fiscalIdentity': recovered.fiscalIdentity,
+            'reconciled': true,
+          })}\n');
+          await handle.flush();
+          return recovered;
+        }
         return HardwareResult(
           switch (previous['outcome']) {
             'succeeded' => CommandOutcome.succeeded,
@@ -264,6 +283,10 @@ class CommandJournal {
               previous['message'] as String? ??
               'Comandă trimisă anterior; necesită verificare',
         );
+      }
+      if (recoveryOnly) {
+        return const HardwareResult(CommandOutcome.unknown,
+          message: 'Comanda originală nu există în jurnal. Recuperarea nu execută o comandă nouă.');
       }
       if(payload['labelLeaseId']!=null) {
         final max=payload['maxCommands'];

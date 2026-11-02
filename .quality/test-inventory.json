@@ -129,6 +129,24 @@
       ]
     },
     {
+      "id": "chimera-companion:1715ebe8864011e91b88",
+      "repository": "chimera-companion",
+      "source": "test/checkout_reconciliation_test.dart",
+      "title": "checkout_reconciliation_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "hardware-adapter",
+      "behavior": null,
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/checkout_reconciliation_test.dart",
+      "metadataStatus": "needs-classification",
+      "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:cfa2e0b7e6d5fcda653e",
       "repository": "chimera-companion",
       "source": "test/command_executor_test.dart",

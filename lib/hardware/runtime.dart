@@ -40,7 +40,13 @@ class HardwareRuntime {
       operation: 'payment',
       payload: payload,
     );
-    if (existing != null) return existing;
+    if (existing != null && existing.outcome != CommandOutcome.unknown) return existing;
+    if (existing != null) {
+      return journal.execute(id: request.commandId, deviceId: deviceId,
+        operation: 'payment', payload: payload, recoveryOnly: true,
+        reconcile: () => adapter.reconcile(request),
+        dispatch: () async => throw StateError('Recovery cannot dispatch payment'));
+    }
     if (recoveryOnly) {
       return const HardwareResult(CommandOutcome.unknown,
         message: 'Rezultatul plății nu există în jurnal. Recuperarea nu inițiază o plată nouă.');

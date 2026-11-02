@@ -9,6 +9,7 @@ import 'text_encoding.dart';
 import 'tremol_protocol.dart';
 import 'command_journal.dart';
 import 'operator_change.dart';
+import 'package:crypto/crypto.dart';
 
 class TremolLanPasswordRequired implements Exception {
   const TremolLanPasswordRequired({this.rejected = false});
@@ -26,13 +27,74 @@ class TremolPaperRequired implements Exception {
 }
 
 class TremolAdapter implements FiscalDeviceAdapter {
-  TremolAdapter(this.connection, {SessionFactory? sessions})
+  TremolAdapter(this.connection, {SessionFactory? sessions, this.checkpoint})
     : _sessions = sessions ?? TcpByteSession.connect {
     if (connection.model == FiscalModel.datecsDp25) {
       throw ArgumentError('Not a Tremol model');
     }
   }
   final FiscalConnection connection;
+  final Future<void> Function(Map<String,dynamic>)? checkpoint;
+  static List<String> receiptMarkers(String id) {
+    final hash=sha256.convert(utf8.encode(id)).toString();
+    return ['CHM1:${hash.substring(0,24)}','CHM2:${hash.substring(24,48)}','CHM3:${hash.substring(48)}'];
+  }
+
+  Future<Map<String,dynamic>> _receiptIdentity(ByteSession session) async {
+    final serial=ascii.decode((await _command(session,0x60,[])).data).trim();
+    final fields=ascii.decode((await _command(session,0x71,[])).data).split(';');
+    if(serial.length!=11||fields.length!=2||!RegExp(r'^\d{4}$').hasMatch(fields[0])||!RegExp(r'^\d{7}$').hasMatch(fields[1]))throw const FormatException('Invalid fiscal identity');
+    return {'serial':serial,'z':fields[0],'number':int.parse(fields[1])};
+  }
+
+  /// Bounded ACK + framed EJ stream; '@' terminates only at a frame boundary.
+  /// Reference: RO2601151250 7Ch and vendor JS demo fpEJReport/RawRead.
+  Future<String> _readReceipt(ByteSession session,int number) async {
+    if(number<1||number>999999)throw ArgumentError('EJ receipt range');
+    await _waitReady(session);
+    final sequence=_sequence;_sequence=_sequence==0x9f?0x20:_sequence+1;
+    int? length(List<int> bytes){
+      if(bytes.length>65536)throw const FormatException('EJ response too large');
+      var offset=0;
+      while(offset<bytes.length){
+        if(offset>0&&bytes[offset]==0x40)return offset+1;
+        final size=TremolProtocol.frameLength(bytes.sublist(offset));
+        if(size==null||bytes.length-offset<size)return null;
+        offset+=size;
+      }
+      return null;
+    }
+    final n=number.toString().padLeft(6,'0');
+    final bytes=await session.exchange(TremolProtocol.encode(sequence,0x7c,ascii.encode('J0;N;$n;$n')),length);
+    var offset=0;final lines=<String>[];
+    while(offset<bytes.length-1){
+      final size=TremolProtocol.frameLength(bytes.sublist(offset))!;
+      final chunk=bytes.sublist(offset,offset+size);
+      final frame=TremolProtocol.decode(chunk,sequence:offset==0?sequence:chunk[2],command:0x7c);
+      if(frame.error!=null||offset==0&&!frame.isAck||offset>0&&frame.isAck)throw const FormatException('Invalid EJ stream');
+      if(!frame.isAck)lines.add(latin1.decode(frame.data).trim());
+      offset+=size;
+    }
+    if(bytes.last!=0x40)throw const FormatException('Incomplete EJ');
+    return lines.join('\n');
+  }
+
+  Future<HardwareResult> reconcileReceipt(String id,Map<String,dynamic>? evidence) async {
+    const unknown=HardwareResult(CommandOutcome.unknown,message:'Bonul nu poate fi identificat sigur în casa de marcat. Necesită verificare; nu se reemite.');
+    if(evidence?['closed']!=true||evidence?['commandId']!=id||evidence?['before'] is! Map)return unknown;
+    if(_busy)return unknown;_busy=true;ByteSession? session;
+    try {
+      session=await _sessions(connection.endpoint);
+      final before=Map<String,dynamic>.from(evidence!['before']);
+      final current=await _receiptIdentity(session);
+      final number=(before['number'] as int)+1;
+      if(current['serial']!=before['serial']||current['z']!=before['z']||current['number']!=number)return unknown;
+      final text=await _readReceipt(session,number);
+      if(!receiptMarkers(id).every((marker)=>text.split('\n').contains(marker)))return unknown;
+      return HardwareResult(CommandOutcome.succeeded,reference:'${number.toString().padLeft(7,'0')}:${current['z']}',message:'Bon identificat în jurnalul electronic Tremol',
+        fiscalIdentity:{'serialNumber':current['serial'] as String,'receiptNumber':number.toString().padLeft(7,'0'),'zNumber':current['z'] as String,'documentMode':'fiscal','fiscalEmittedAt':evidence['closedAt'] as String});
+    }catch(_){return unknown;}finally{await session?.close();_busy=false;}
+  }
   final SessionFactory _sessions;
   Future<Map<String, Object?>> setOperator({
     required String deviceId, required String commandId,
@@ -563,6 +625,7 @@ class TremolAdapter implements FiscalDeviceAdapter {
     _busy = true;
     ByteSession? session;
     bool dispatched = false;
+    Map<String,dynamic>? evidence;
     try {
       session = await _sessions(connection.endpoint);
       if (!(await _status(session)).ready) {
@@ -570,6 +633,10 @@ class TremolAdapter implements FiscalDeviceAdapter {
           CommandOutcome.rejected,
           message: 'ECR nu este pregătit',
         );
+      }
+      if(checkpoint!=null){
+        evidence={'commandId':receipt.commandId,'before':await _receiptIdentity(session),'closed':false};
+        await checkpoint!(evidence);
       }
       dispatched = true;
       await _command(
@@ -600,7 +667,16 @@ class TremolAdapter implements FiscalDeviceAdapter {
         await _command(session,0x37,ascii.encode('Fidelity: ${receipt.claimToken}'),ack:true);
         await _command(session,0x51,ascii.encode('P;I;12;${receipt.claimToken}'),ack:true);
       }
+      if(evidence!=null){
+        for(final marker in receiptMarkers(receipt.commandId)){
+          await _command(session,0x37,ascii.encode(marker),ack:true);
+        }
+      }
       await _command(session, 0x38, [], ack: true);
+      if(evidence!=null){
+        evidence={...evidence,'closed':true,'closedAt':DateTime.now().toUtc().toIso8601String()};
+        await checkpoint!(evidence);
+      }
       final counter = await _command(session, 0x71, []);
       final fields = ascii.decode(counter.data).split(';');
       if (fields.length != 2 ||
