@@ -44,6 +44,7 @@ class SecureEnrollmentService implements EnrollmentService {
       final saved = {
         ...data,
         'erp_url': enrolledErpAddress(data, origin).origin,
+        'auth_url': enrolledAuthAddress(data, origin).origin,
       };
       await _storage.write(key: 'erp_pairing_v1', value: jsonEncode(saved));
       await _storage.delete(key: 'enrollment_attempt_v1');

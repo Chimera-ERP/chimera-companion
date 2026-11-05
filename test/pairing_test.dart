@@ -24,9 +24,52 @@ class EnrollmentFixture implements EnrollmentService {
 
 void main() {
   test(
+    'cloud enrollment and renewal use Auth while business traffic retains its ERP',
+    () {
+      final cloud = Uri.parse(defaultEnrollmentOrigin);
+      expect(
+        enrollmentEndpoint(cloud).toString(),
+        'https://auth.chimeraerp.ro/auth/enroll-device',
+      );
+      expect(() => enrolledErpAddress({}, cloud), throwsFormatException);
+      final pairing = {
+        'erp_url': 'https://erp.customer.example',
+        'auth_url': 'https://auth.chimeraerp.ro',
+      };
+      final erp = enrolledErpAddress(pairing, cloud);
+      expect(erp.origin, 'https://erp.customer.example');
+      expect(
+        enrolledAuthAddress(
+          pairing,
+          erp,
+        ).resolve('/auth/device-token').toString(),
+        'https://auth.chimeraerp.ro/auth/device-token',
+      );
+      expect(enrolledAuthAddress({}, erp), erp);
+      expect(
+        enrolledAuthAddress({
+          'auth_url': 'https://auth.enterprise.example',
+        }, erp).origin,
+        'https://auth.enterprise.example',
+      );
+      for (final invalid in [
+        'http://auth.example',
+        'https://user@auth.example',
+        'https://auth.example/path',
+        42,
+      ]) {
+        expect(
+          () => enrolledAuthAddress({'auth_url': invalid}, erp),
+          throwsFormatException,
+        );
+      }
+    },
+  );
+
+  test(
     'cloud PIN stores the tenant ERP and self-hosted enrollment retains its origin',
     () {
-      final cloud = Uri.parse(defaultErpOrigin);
+      final cloud = Uri.parse(defaultEnrollmentOrigin);
       expect(
         enrolledErpAddress({
           'erp_url': 'https://erp.cakeexpert.chimeraerp.ro',
@@ -83,7 +126,7 @@ void main() {
     expect(find.text('Introdu PIN-ul de 6 cifre.'), findsOneWidget);
     expect(service.calls, isEmpty);
     await submit(tester);
-    expect(service.calls, [(Uri.parse(defaultErpOrigin), '123456')]);
+    expect(service.calls, [(Uri.parse(defaultEnrollmentOrigin), '123456')]);
     expect(find.text('Continuă'), findsOneWidget);
   });
   testWidgets(
@@ -145,7 +188,9 @@ void main() {
         findsOneWidget,
       );
       expect(
-        service.calls.every((call) => call.$1.origin == defaultErpOrigin),
+        service.calls.every(
+          (call) => call.$1.origin == defaultEnrollmentOrigin,
+        ),
         isTrue,
       );
     },

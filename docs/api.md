@@ -42,6 +42,17 @@ The user reported the Android console working on build39 but only the idle key r
 build40. Build41 removes reusable asset paths and adds remote console inspection; the actual
 cause/device result still requires confirming whether the phone enters test mode and a new trial.
 
+## Cloud enrollment routing
+
+The default PIN endpoint is `https://auth.chimeraerp.ro/auth/enroll-device`.
+The authenticated enrollment response carries the tenant's canonical `erp_url`
+and the deployment's optional `auth_url`. Both must be HTTPS origins without
+credentials, paths, queries or fragments. Cloud enrollment requires an ERP origin;
+it never stores the Auth service as the ERP. Device-token renewal uses `auth_url`.
+Older pairings fall back to their existing ERP Auth proxy, and self-hosted servers
+may keep both services on one origin. Signed proof, nonce/retry identity, issuer,
+organization and location validation are unchanged.
+
 ## Scale integration (Acaia BLE, hardware qualification pending)
 
 Setup starts with a persisted usage profile: POS (ECR, Viva, scale), KDS/PDS

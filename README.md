@@ -3,6 +3,11 @@
 Source available under [PolyForm Shield 1.0.0](LICENSE). This applies to the
 project's own code; third-party components retain their terms in [NOTICE](NOTICE).
 
+Cloud PIN enrollment uses `https://auth.chimeraerp.ro`. Auth returns the tenant's
+`erp_url` and its own `auth_url`; Companion keeps business requests on the ERP and
+renews device credentials through Auth. Existing pairings without `auth_url`
+retain their ERP proxy. Enterprise/self-hosted addresses remain explicit.
+
 ## Android releases
 
 [GitHub Releases](https://github.com/Chimera-ERP/chimera-companion/releases/latest)

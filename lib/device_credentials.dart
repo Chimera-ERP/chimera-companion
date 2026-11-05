@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'security/device_identity.dart';
+import 'enrollment.dart';
 
 Map<String, dynamic> freshDeviceMessage(
   String purpose,
@@ -119,11 +120,13 @@ Future<Map<String, dynamic>> _renewPairing(Map<String, dynamic> pairing) async {
   final message = jsonEncode(
     freshDeviceMessage('renew', {'device_id': pairing['device_id']}),
   );
-  final erp = Uri.parse(pairing['erp_url'] as String);
-  if (erp.scheme != 'https') throw const FormatException('HTTPS required');
+  final auth = enrolledAuthAddress(
+    pairing,
+    Uri.parse(pairing['erp_url'] as String),
+  );
   final client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
   try {
-    final request = await client.postUrl(erp.resolve('/auth/device-token'));
+    final request = await client.postUrl(auth.resolve('/auth/device-token'));
     request.followRedirects = false;
     request.headers.contentType = ContentType.json;
     request.write(

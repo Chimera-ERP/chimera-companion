@@ -26,7 +26,7 @@ class PairingPage extends StatefulWidget {
 }
 
 class _PairingPageState extends State<PairingPage> {
-  final _url = TextEditingController(text: defaultErpOrigin);
+  final _url = TextEditingController(text: defaultEnrollmentOrigin);
   final _pin = TextEditingController();
   bool _busy = true;
   bool _enterprise = false;
@@ -84,7 +84,7 @@ class _PairingPageState extends State<PairingPage> {
       final data = await widget.service.restore();
       if (data == null || !mounted) return;
       _url.text = data['erp_url'] as String;
-      _enterprise = _url.text != defaultErpOrigin;
+      _enterprise = _url.text != defaultEnrollmentOrigin;
       _paired = true;
       setState(
         () => _message =
@@ -117,7 +117,7 @@ class _PairingPageState extends State<PairingPage> {
     _error = true;
     Uri uri;
     try {
-      uri = erpAddress(_enterprise ? _url.text : defaultErpOrigin);
+      uri = erpAddress(_enterprise ? _url.text : defaultEnrollmentOrigin);
     } on FormatException {
       setState(() => _message = 'Introdu adresa HTTPS a serverului.');
       _syncAction();
@@ -148,7 +148,7 @@ class _PairingPageState extends State<PairingPage> {
     } catch (error) {
       if (error is EnrollmentRejected &&
           error.status == 400 &&
-          uri.origin == defaultErpOrigin) {
+          uri.origin == defaultEnrollmentOrigin) {
         _rejectedPins++;
       }
       if (mounted) {
@@ -325,7 +325,7 @@ class _PairingPageState extends State<PairingPage> {
                 : () {
                     setState(() {
                       _enterprise = false;
-                      _url.text = defaultErpOrigin;
+                      _url.text = defaultEnrollmentOrigin;
                       _pin.clear();
                       _notice = null;
                     });

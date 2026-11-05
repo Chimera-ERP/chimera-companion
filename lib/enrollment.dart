@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-const defaultErpOrigin = 'https://chimeraerp.ro';
+const defaultEnrollmentOrigin = 'https://auth.chimeraerp.ro';
 
 class EnrollmentRejected extends FormatException {
   const EnrollmentRejected(this.status, String message) : super(message);
@@ -75,9 +75,26 @@ Map<String, dynamic> parseEnrollmentResponse(int status, String body) {
 /// A successful trusted enrollment can direct the device to its own tenant ERP.
 Uri enrolledErpAddress(Map<String, dynamic> data, Uri requestedOrigin) {
   final canonical = data['erp_url'];
-  if (canonical == null) return requestedOrigin;
+  if (canonical == null) {
+    if (requestedOrigin.origin == defaultEnrollmentOrigin) {
+      throw const FormatException(
+        'Cloud enrollment did not return a tenant ERP',
+      );
+    }
+    return requestedOrigin;
+  }
   if (canonical is! String || canonical != erpAddress(canonical).origin) {
     throw const FormatException('Invalid enrolled ERP origin');
+  }
+  return Uri.parse(canonical);
+}
+
+/// Old pairings and self-hosted servers keep their existing Auth proxy route.
+Uri enrolledAuthAddress(Map<String, dynamic> data, Uri fallback) {
+  final canonical = data['auth_url'];
+  if (canonical == null) return erpAddress(fallback.origin);
+  if (canonical is! String || canonical != erpAddress(canonical).origin) {
+    throw const FormatException('Invalid enrolled Auth origin');
   }
   return Uri.parse(canonical);
 }
