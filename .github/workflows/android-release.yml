@@ -26,6 +26,8 @@ jobs:
       - run: flutter pub get --enforce-lockfile
       - run: flutter analyze
       - run: node --test tool/release.test.mjs
+      - name: Install Rive native runtime for Linux tests
+        run: dart run rive_native:setup --verbose --clean --platform linux
       - name: Flutter regression suite
         run: flutter test
 
