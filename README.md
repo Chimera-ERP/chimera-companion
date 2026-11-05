@@ -68,3 +68,9 @@ Run `flutter analyze` and `flutter test` to verify; use `flutter devices` then
 
 See [implementation checklist](docs/implementation-checklist.md) for architecture,
 remaining tasks, platform requirements and hardware acceptance gates.
+
+The setup form keeps its Flutter state across keyboard-driven layout changes.
+PIN and Enterprise URL inputs retain focus and text when Android resizes the
+wide wizard; `test/setup_keyboard_test.dart` reproduces opening and closing the
+keyboard across the wide/compact height threshold. Physical iMin acceptance is
+separate from the widget regression.

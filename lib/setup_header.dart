@@ -48,41 +48,43 @@ class SetupFrame extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 720),
         child: child,
       );
-      if (constraints.maxWidth < 1100 || constraints.maxHeight < 500) {
-        return Center(child: form);
-      }
+      final wide = constraints.maxWidth >= 1100 && constraints.maxHeight >= 500;
+      // Keep the form at the same keyed position in the widget tree when the
+      // Android keyboard changes the available height. Reparenting it recreates
+      // TextFields, drops focus and immediately dismisses the keyboard.
       return Center(
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 1060),
+          constraints: BoxConstraints(maxWidth: wide ? 1060 : 720),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              SizedBox(
-                width: 300,
-                child: ListView(
-                  padding: const EdgeInsets.fromLTRB(12, 24, 24, 24),
-                  children: [
-                    for (var i = 0; i < steps.length; i++)
-                      ListTile(
-                        selected: steps[i] == step,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 12,
+              if (wide)
+                SizedBox(
+                  width: 300,
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(12, 24, 24, 24),
+                    children: [
+                      for (var i = 0; i < steps.length; i++)
+                        ListTile(
+                          selected: steps[i] == step,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                          ),
+                          leading: i < steps.indexOf(step)
+                              ? const Icon(Icons.check, size: 20)
+                              : Icon(
+                                  steps[i] == step
+                                      ? Icons.radio_button_checked
+                                      : Icons.circle_outlined,
+                                  size: 20,
+                                ),
+                          title: Text(setupStepTitles[steps[i]]),
                         ),
-                        leading: i < steps.indexOf(step)
-                            ? const Icon(Icons.check, size: 20)
-                            : Icon(
-                                steps[i] == step
-                                    ? Icons.radio_button_checked
-                                    : Icons.circle_outlined,
-                                size: 20,
-                              ),
-                        title: Text(setupStepTitles[steps[i]]),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const VerticalDivider(width: 1),
-              Expanded(child: form),
+              if (wide) const VerticalDivider(width: 1),
+              Expanded(key: const ValueKey('setup-form'), child: form),
             ],
           ),
         ),

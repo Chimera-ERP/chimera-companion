@@ -1,6 +1,8 @@
 {
   "version": 1,
-  "foreignCommands": ["quality:sync"],
+  "foreignCommands": [
+    "quality:sync"
+  ],
   "repository": "chimera-companion",
   "authority": "../chimera",
   "runner": "jest",
@@ -94,29 +96,148 @@
     "test/widget_test.dart"
   ],
   "coverage": {
-    "test/update_release_test.dart": {"level":"unit","behavior":"Public GitHub update discovery, bounded trusted redirects, upgrade-only version checks, APK size/hash verification and partial-file cleanup","limitations":["Synthetic HTTP transport; native installer and public release are verified separately"]},
-    "tool/release.test.mjs": {"level":"unit","behavior":"Release packaging rejects incompatible Android identity, certificate, debug mode and version metadata; manifests bind the exact source commit","limitations":["Synthetic APK-tool output; actual apksigner and aapt are required in the release job"]},
-    "test/companion_scene_test.dart": {"level":"integration","behavior":"All bundled artboards import and advance through assembly and continuous idle in the real Rive Flutter runtime","limitations":["Host runtime; does not establish Android GPU, performance or physical-display acceptance"]},
-    "test/tls_setup_flow_test.dart": {"level":"unit","behavior":"Connection preparation is single-flight, completes only on provisioning success, hides technical diagnostics under Advanced and redetects the network on explicit retry","limitations":["Injected provisioning and network discovery; certificate verification is covered separately in tls_provisioning_test.dart"]},
-    "test/pairing_test.dart": {"level":"unit","behavior":"Default PIN-first enrollment, Enterprise host selection and PIN clearing, rejected-PIN shortcut threshold, single-flight submission and persisted enrollment restoration","limitations":["Injected enrollment service; no live ERP enrollment or credential issuance"]},
-    "test/setup_profile_test.dart": {"level":"unit","behavior":"Audience-specific applications and equipment, legacy profile inference and stable supported step selection","limitations":["Pure configuration; physical peripheral setup is not exercised"]},
-    "test/setup_visual_test.dart": {"level":"unit","behavior":"Onboarding and printer setup render without overflow in portrait, short landscape and wide windows","limitations":["Flutter widget capture with bundled motion stills; live Rive browser inspection recorded separately"]},
-    "test/console_test.dart": {"level":"unit","behavior":"Ulanzi framing/ZIP/barriers, held-key suppression, fresh one-shot console views and scoped signed short-lived authorization","limitations":["Synthetic USB and cryptographic identities; physical firmware qualification pending"]},
-    "test/console_diagnostics_test.dart": {"level":"unit","behavior":"Diagnostic keys5/10 page navigation, randomized other keys, test/KDS mutual exclusion, in-flight/disconnect safety and opaque black rendered PNGs; console screen layout","limitations":["Synthetic USB; actual display contrast and physical navigation require user trial"]},
-    "test/console_stream_test.dart": {"level":"integration","behavior":"Real loopback TLS/WebSocket rejects copied grants without device proof and carries current-view presses and same-identity renewal","limitations":["Synthetic USB/signing keys; not LAN or physical-device acceptance"]},
-    "test/production_print_test.dart": {"level":"integration","behavior":"Bounded ESC/POS/ZPL templates, Romanian transliteration, signed production scope, durable duplicate/restart handling, queue admission and explicit reprints","limitations":["Synthetic identities and mocked printer sends; no physical printer acceptance"]},
-    "test/printer_settings_test.dart": {"level":"unit","behavior":"Optional printer settings loading, narrow layout, validation, persistence and enrollment/ECR identity preservation","limitations":["Flutter widget harness; no manual browser or hardware inspection"]},
-    "test/niimbot_test.dart": {"level":"unit","behavior":"NIIMBOT framing, bounded model identification, row encoding, print task rejection, fixed raster and shared authorized durable idempotency","limitations":["Simulated Bluetooth transport; physical printer qualification pending"]},
-    "test/niimbot_wizard_test.dart": {"level":"unit","behavior":"Bluetooth printer selection and persistence with real application theme in portrait, landscape and wide layouts","limitations":["Mocked discovery and secure storage; rendered Flutter harness, not a physical iMin"]},
-    "test/provisional_label_test.dart": {"level":"integration","behavior":"Real TLS and ES256 ERP lease plus KDS device proof authorize measured provisional output; scope, quantity, local-lot, expiry, duplicate report, exact reprint and durable command-limit enforcement","limitations":["Loopback HTTPS and synthetic keys with mocked printer sends; no real LAN printer or statutory acceptance"]},
+    "test/update_release_test.dart": {
+      "level": "unit",
+      "behavior": "Public GitHub update discovery, bounded trusted redirects, upgrade-only version checks, APK size/hash verification and partial-file cleanup",
+      "limitations": [
+        "Synthetic HTTP transport; native installer and public release are verified separately"
+      ]
+    },
+    "tool/release.test.mjs": {
+      "level": "unit",
+      "behavior": "Release packaging rejects incompatible Android identity, certificate, debug mode and version metadata; manifests bind the exact source commit",
+      "limitations": [
+        "Synthetic APK-tool output; actual apksigner and aapt are required in the release job"
+      ]
+    },
+    "test/companion_scene_test.dart": {
+      "level": "integration",
+      "behavior": "All bundled artboards import and advance through assembly and continuous idle in the real Rive Flutter runtime",
+      "limitations": [
+        "Host runtime; does not establish Android GPU, performance or physical-display acceptance"
+      ]
+    },
+    "test/tls_setup_flow_test.dart": {
+      "level": "unit",
+      "behavior": "Connection preparation is single-flight, completes only on provisioning success, hides technical diagnostics under Advanced and redetects the network on explicit retry",
+      "limitations": [
+        "Injected provisioning and network discovery; certificate verification is covered separately in tls_provisioning_test.dart"
+      ]
+    },
+    "test/pairing_test.dart": {
+      "level": "unit",
+      "behavior": "Default PIN-first enrollment, Enterprise host selection and PIN clearing, rejected-PIN shortcut threshold, single-flight submission and persisted enrollment restoration",
+      "limitations": [
+        "Injected enrollment service; no live ERP enrollment or credential issuance"
+      ]
+    },
+    "test/setup_profile_test.dart": {
+      "level": "unit",
+      "behavior": "Audience-specific applications and equipment, legacy profile inference and stable supported step selection",
+      "limitations": [
+        "Pure configuration; physical peripheral setup is not exercised"
+      ]
+    },
+    "test/setup_visual_test.dart": {
+      "level": "unit",
+      "behavior": "Onboarding and printer setup render without overflow in portrait, short landscape and wide windows",
+      "limitations": [
+        "Flutter widget capture with bundled motion stills; live Rive browser inspection recorded separately"
+      ]
+    },
+    "test/console_test.dart": {
+      "level": "unit",
+      "behavior": "Ulanzi framing/ZIP/barriers, held-key suppression, fresh one-shot console views and scoped signed short-lived authorization",
+      "limitations": [
+        "Synthetic USB and cryptographic identities; physical firmware qualification pending"
+      ]
+    },
+    "test/console_diagnostics_test.dart": {
+      "level": "unit",
+      "behavior": "Diagnostic keys5/10 page navigation, randomized other keys, test/KDS mutual exclusion, in-flight/disconnect safety and opaque black rendered PNGs; console screen layout",
+      "limitations": [
+        "Synthetic USB; actual display contrast and physical navigation require user trial"
+      ]
+    },
+    "test/console_stream_test.dart": {
+      "level": "integration",
+      "behavior": "Real loopback TLS/WebSocket rejects copied grants without device proof and carries current-view presses and same-identity renewal",
+      "limitations": [
+        "Synthetic USB/signing keys; not LAN or physical-device acceptance"
+      ]
+    },
+    "test/production_print_test.dart": {
+      "level": "integration",
+      "behavior": "Bounded ESC/POS/ZPL templates, Romanian transliteration, signed production scope, durable duplicate/restart handling, queue admission and explicit reprints",
+      "limitations": [
+        "Synthetic identities and mocked printer sends; no physical printer acceptance"
+      ]
+    },
+    "test/printer_settings_test.dart": {
+      "level": "unit",
+      "behavior": "Optional printer settings loading, narrow layout, validation, persistence and enrollment/ECR identity preservation",
+      "limitations": [
+        "Flutter widget harness; no manual browser or hardware inspection"
+      ]
+    },
+    "test/niimbot_test.dart": {
+      "level": "unit",
+      "behavior": "NIIMBOT framing, bounded model identification, row encoding, print task rejection, fixed raster and shared authorized durable idempotency",
+      "limitations": [
+        "Simulated Bluetooth transport; physical printer qualification pending"
+      ]
+    },
+    "test/niimbot_wizard_test.dart": {
+      "level": "unit",
+      "behavior": "Bluetooth printer selection and persistence with real application theme in portrait, landscape and wide layouts",
+      "limitations": [
+        "Mocked discovery and secure storage; rendered Flutter harness, not a physical iMin"
+      ]
+    },
+    "test/provisional_label_test.dart": {
+      "level": "integration",
+      "behavior": "Real TLS and ES256 ERP lease plus KDS device proof authorize measured provisional output; scope, quantity, local-lot, expiry, duplicate report, exact reprint and durable command-limit enforcement",
+      "limitations": [
+        "Loopback HTTPS and synthetic keys with mocked printer sends; no real LAN printer or statutory acceptance"
+      ]
+    },
     "test/customer_display_bundle_test.dart": {
       "level": "unit",
       "behavior": "Atomic offline bundle installation, cold restore, hash/size/scope rejection and previous-version preservation",
-      "limitations": ["Synthetic files; native Android and physical checks recorded separately"]
+      "limitations": [
+        "Synthetic files; native Android and physical checks recorded separately"
+      ]
     },
-    "test/customer_display_stream_test.dart": {"level":"integration","behavior":"Persistent TLS display stream verifies paired signatures, challenge freshness, payload integrity, expiry and revocation; rejects other operations and oversized frames","limitations":["Real loopback TLS/WebSocket with synthetic identities; native display rendering verified separately on iMin"]},
-    "test/customer_display_test.dart": {"level":"unit","behavior":"Bounded public basket payload and paired display dispatch without fiscal device access","limitations":["Mocked Android method channel; physical iMin acceptance pending"]},
-    "test/customer_display_authorization_test.dart": {"level":"integration","behavior":"Signed paired POS can update display without operator; copied tokens, tampering, replay and ungranted operations fail","limitations":["Synthetic signing identities; no physical LAN"]}
+    "test/customer_display_stream_test.dart": {
+      "level": "integration",
+      "behavior": "Persistent TLS display stream verifies paired signatures, challenge freshness, payload integrity, expiry and revocation; rejects other operations and oversized frames",
+      "limitations": [
+        "Real loopback TLS/WebSocket with synthetic identities; native display rendering verified separately on iMin"
+      ]
+    },
+    "test/customer_display_test.dart": {
+      "level": "unit",
+      "behavior": "Bounded public basket payload and paired display dispatch without fiscal device access",
+      "limitations": [
+        "Mocked Android method channel; physical iMin acceptance pending"
+      ]
+    },
+    "test/customer_display_authorization_test.dart": {
+      "level": "integration",
+      "behavior": "Signed paired POS can update display without operator; copied tokens, tampering, replay and ungranted operations fail",
+      "limitations": [
+        "Synthetic signing identities; no physical LAN"
+      ]
+    },
+    "test/setup_keyboard_test.dart": {
+      "level": "widget",
+      "runner": "flutter",
+      "behavior": "Wide setup retains the same editable state, keyboard focus and PIN/Enterprise input across keyboard insets and compact layout transitions",
+      "command": "flutter test test/setup_keyboard_test.dart",
+      "limitations": [
+        "Flutter simulated Android keyboard insets; no physical iMin installation or keyboard trial."
+      ]
+    }
   },
   "impact": [
     {

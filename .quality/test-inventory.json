@@ -1007,6 +1007,25 @@
       ]
     },
     {
+      "id": "chimera-companion:c9b2a85da8f3b6cfa750",
+      "repository": "chimera-companion",
+      "source": "test/setup_keyboard_test.dart",
+      "title": "setup_keyboard_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "widget",
+      "behavior": "Wide setup retains the same editable state, keyboard focus and PIN/Enterprise input across keyboard insets and compact layout transitions",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/setup_keyboard_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Flutter simulated Android keyboard insets; no physical iMin installation or keyboard trial.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:b7e9edefd48672b8152e",
       "repository": "chimera-companion",
       "source": "test/setup_profile_test.dart",
