@@ -212,6 +212,26 @@ void main() {
     },
   );
   testWidgets(
+    'saved cloud association keeps cloud mode when its ERP belongs to a tenant',
+    (tester) async {
+      final service = EnrollmentFixture()
+        ..saved = {
+          'erp_url': 'https://erp.customer.chimeraerp.ro',
+          'auth_url': defaultEnrollmentOrigin,
+          'location_name': 'Cloud location',
+        };
+      await open(tester, service);
+      expect(find.text('Continuă'), findsOneWidget);
+      expect(service.calls, isEmpty);
+      await tester.tap(find.text('Schimbă asocierea'));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const ValueKey('enterprise-url')), findsNothing);
+      expect(find.text('Chimera Cloud'), findsOneWidget);
+      await submit(tester);
+      expect(service.calls, [(Uri.parse(defaultEnrollmentOrigin), '123456')]);
+    },
+  );
+  testWidgets(
     'saved Enterprise association is restored without another enrollment',
     (tester) async {
       final service = EnrollmentFixture()

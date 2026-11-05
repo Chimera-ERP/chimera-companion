@@ -83,8 +83,10 @@ class _PairingPageState extends State<PairingPage> {
     try {
       final data = await widget.service.restore();
       if (data == null || !mounted) return;
-      _url.text = data['erp_url'] as String;
-      _enterprise = _url.text != defaultEnrollmentOrigin;
+      final erp = Uri.parse(data['erp_url'] as String);
+      _enterprise =
+          enrolledAuthAddress(data, erp).origin != defaultEnrollmentOrigin;
+      _url.text = _enterprise ? erp.origin : defaultEnrollmentOrigin;
       _paired = true;
       setState(
         () => _message =
