@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:forui/forui.dart';
 import 'device_setup.dart';
+import 'companion_scene.dart';
 import 'pairing.dart';
 import 'debug_panel.dart';
 import 'local_bridge.dart';
@@ -62,8 +63,9 @@ Future<void> resumeSavedCompanion(
 }
 
 class CompanionApp extends StatefulWidget {
-  const CompanionApp({super.key, this.bridge});
+  const CompanionApp({super.key, this.bridge, this.home});
   final LocalBridge? bridge;
+  final Widget? home;
   @override
   State<CompanionApp> createState() => _CompanionAppState();
 }
@@ -78,16 +80,82 @@ class _CompanionAppState extends State<CompanionApp> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = FTheme.neutral.dark.touch;
+    final theme = FThemeData(
+      touch: true,
+      colors: FColors.neutralDark.copyWith(
+        background: Colors.black,
+        card: const Color(0xff090d14),
+        primary: const Color(0xff2563eb),
+        primaryForeground: Colors.white,
+        secondary: const Color(0xff111827),
+        muted: const Color(0xff111827),
+        border: const Color(0xff1e293b),
+        mutedForeground: const Color(0xff94a3b8),
+      ),
+    );
     return MaterialApp(
       title: 'Chimera Companion',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       darkTheme: theme.toApproximateMaterialTheme().copyWith(
+        scaffoldBackgroundColor: const Color(0xff000000),
+        dialogTheme: const DialogThemeData(
+          backgroundColor: Color(0xff090d14),
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.all(Radius.circular(20)),
+            side: BorderSide(color: Color(0xff1e293b)),
+          ),
+        ),
+        dividerColor: const Color(0xff1e293b),
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Color(0xff000000),
+          surfaceTintColor: Colors.transparent,
+          centerTitle: false,
+          elevation: 0,
+          titleTextStyle: TextStyle(
+            fontFamily: 'packages/forui/Inter',
+            fontSize: 18,
+            fontWeight: FontWeight.w600,
+            color: Color(0xfff8fafc),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: const Color(0xff090d14),
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 18,
+          ),
+          border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xff1e293b)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(color: Color(0xff60a5fa), width: 2),
+          ),
+        ),
+        listTileTheme: const ListTileThemeData(
+          iconColor: Color(0xff94a3b8),
+          titleTextStyle: TextStyle(
+            fontFamily: 'packages/forui/Inter',
+            fontSize: 15,
+            fontWeight: FontWeight.w500,
+            color: Color(0xfff8fafc),
+          ),
+          subtitleTextStyle: TextStyle(
+            fontFamily: 'packages/forui/Inter',
+            fontSize: 13,
+            height: 1.5,
+            color: Color(0xff94a3b8),
+          ),
+        ),
         filledButtonTheme: FilledButtonThemeData(
           style: FilledButton.styleFrom(
-            backgroundColor: const Color(0xffeeeeee),
-            foregroundColor: const Color(0xff171717),
+            backgroundColor: const Color(0xff2563eb),
+            foregroundColor: const Color(0xffffffff),
             disabledBackgroundColor: const Color(0xff303030),
             disabledForegroundColor: const Color(0xffa3a3a3),
             minimumSize: const Size(48, 48),
@@ -98,8 +166,8 @@ class _CompanionAppState extends State<CompanionApp> {
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
-            backgroundColor: const Color(0xffeeeeee),
-            foregroundColor: const Color(0xff171717),
+            backgroundColor: const Color(0xff2563eb),
+            foregroundColor: const Color(0xffffffff),
             minimumSize: const Size(48, 48),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -107,10 +175,14 @@ class _CompanionAppState extends State<CompanionApp> {
           ),
         ),
         textButtonTheme: TextButtonThemeData(
-          style: TextButton.styleFrom(minimumSize: const Size(48, 48)),
+          style: TextButton.styleFrom(
+            minimumSize: const Size(48, 48),
+            foregroundColor: const Color(0xff60a5fa),
+          ),
         ),
         outlinedButtonTheme: OutlinedButtonThemeData(
           style: OutlinedButton.styleFrom(
+            foregroundColor: const Color(0xff60a5fa),
             minimumSize: const Size(48, 48),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(8),
@@ -123,10 +195,10 @@ class _CompanionAppState extends State<CompanionApp> {
         child: CompanionUpdateScope(
           isBusy: () => _bridge.busy,
           setUpdating: _updating,
-          child: child!,
+          child: CompanionMotionScope(child: child!),
         ),
       ),
-      home: CompanionEntry(bridge: _bridge),
+      home: widget.home ?? CompanionEntry(bridge: _bridge),
     );
   }
 }
@@ -164,14 +236,19 @@ class _CompanionEntryState extends State<CompanionEntry> {
 
   @override
   Widget build(BuildContext context) => _complete == null
-      ? Scaffold(
-          appBar: const CompanionAppBar(title: Text('Companion')),
-          body: const Center(child: CircularProgressIndicator()),
+      ? const Scaffold(
+          body: Center(
+            child: CompanionScene(
+              scene: CompanionSceneState.splash,
+              height: 320,
+            ),
+          ),
         )
       : _complete == true
       ? CompanionHome(bridge: widget.bridge)
       : DeviceSetupPage(
           scales: widget.bridge?.scales,
+          console: widget.bridge?.console,
           onCompleted: () {
             if (mounted) setState(() => _complete = true);
           },
@@ -337,7 +414,11 @@ class _CompanionHomeState extends State<CompanionHome> {
               'Adresă și operator',
               Icons.settings_outlined,
               () => _open(
-                DeviceSetupPage(initialStep: 2, scales: _bridge.scales),
+                DeviceSetupPage(
+                  initialStep: 2,
+                  scales: _bridge.scales,
+                  console: _bridge.console,
+                ),
               ),
             ),
           ],
@@ -373,7 +454,13 @@ class _CompanionHomeState extends State<CompanionHome> {
           'Configurează terminalul',
           'Pe acest telefon sau în LAN',
           Icons.settings_outlined,
-          () => _open(DeviceSetupPage(initialStep: 3, scales: _bridge.scales)),
+          () => _open(
+            DeviceSetupPage(
+              initialStep: 3,
+              scales: _bridge.scales,
+              console: _bridge.console,
+            ),
+          ),
         ),
       ],
     ),
@@ -395,7 +482,13 @@ class _CompanionHomeState extends State<CompanionHome> {
           'Configurează HTTPS',
           'Conexiune securizată pentru POS',
           Icons.security,
-          () => _open(DeviceSetupPage(initialStep: 1, scales: _bridge.scales)),
+          () => _open(
+            DeviceSetupPage(
+              initialStep: 1,
+              scales: _bridge.scales,
+              console: _bridge.console,
+            ),
+          ),
         ),
         FTile(
           title: const Text('Ultima comunicare POS'),
@@ -425,6 +518,15 @@ class _CompanionHomeState extends State<CompanionHome> {
       final connections = ListView(
         padding: const EdgeInsets.all(20),
         children: [
+          CompanionScene(
+            height: wide ? 155 : 180,
+            scene: _error != null
+                ? CompanionSceneState.attention
+                : _bridge.busy
+                ? CompanionSceneState.connecting
+                : CompanionSceneState.custom,
+          ),
+          const SizedBox(height: 20),
           Text(_bridge.location, style: Theme.of(context).textTheme.bodySmall),
           const SizedBox(height: 16),
           FTileGroup(
@@ -581,7 +683,12 @@ class _CompanionHomeState extends State<CompanionHome> {
                 enabled: !_bridge.busy,
                 onSelected: (value) {
                   if (value == 'settings') {
-                    _open(DeviceSetupPage(scales: _bridge.scales));
+                    _open(
+                      DeviceSetupPage(
+                        scales: _bridge.scales,
+                        console: _bridge.console,
+                      ),
+                    );
                   }
                   if (value == 'diagnostic') _diagnostics();
                   if (value == 'console') {

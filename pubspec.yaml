@@ -1,7 +1,7 @@
 name: chimera_companion
 description: "Local hardware companion for Chimera ERP and POS."
 publish_to: 'none'
-version: 0.1.42+44
+version: 0.1.44+46
 
 environment:
   sdk: ^3.12.2
@@ -23,6 +23,7 @@ dependencies:
   permission_handler: ^12.0.1
   reactive_ble_mobile: 5.4.0
   reactive_ble_platform_interface: 5.4.0
+  rive: ^0.14.11
 
 dev_dependencies:
   flutter_test:
@@ -32,4 +33,7 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
+    - LICENSE
+    - NOTICE
     - assets/customer-display/index.html
+    - assets/motion/

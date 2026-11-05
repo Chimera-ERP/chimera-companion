@@ -1,5 +1,12 @@
 import 'dart:convert';
 
+const defaultErpOrigin = 'https://chimeraerp.ro';
+
+class EnrollmentRejected extends FormatException {
+  const EnrollmentRejected(this.status, String message) : super(message);
+  final int status;
+}
+
 // Public auth service route, also exposed unchanged by the development tunnel.
 Uri enrollmentEndpoint(Uri erp) => erp.resolve('/auth/enroll-device');
 
@@ -44,7 +51,7 @@ Map<String, dynamic> parseEnrollmentResponse(int status, String body) {
       _ =>
         'Serverul nu poate finaliza asocierea (HTTP $status). PIN-ul nu este neapărat invalid.',
     };
-    throw FormatException(message);
+    throw EnrollmentRejected(status, message);
   }
   try {
     final data = jsonDecode(body);
@@ -63,4 +70,14 @@ Map<String, dynamic> parseEnrollmentResponse(int status, String body) {
   throw const FormatException(
     'Răspuns de asociere invalid. Verifică serverul ERP.',
   );
+}
+
+/// A successful trusted enrollment can direct the device to its own tenant ERP.
+Uri enrolledErpAddress(Map<String, dynamic> data, Uri requestedOrigin) {
+  final canonical = data['erp_url'];
+  if (canonical == null) return requestedOrigin;
+  if (canonical is! String || canonical != erpAddress(canonical).origin) {
+    throw const FormatException('Invalid enrolled ERP origin');
+  }
+  return Uri.parse(canonical);
 }

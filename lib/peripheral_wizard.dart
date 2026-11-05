@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'companion_scene.dart';
 
 /// Shared local peripheral setup. Selecting transport never performs hardware I/O.
 class PeripheralWizard extends StatefulWidget {
@@ -13,12 +14,15 @@ class PeripheralWizard extends StatefulWidget {
     this.busy = false,
     this.transports,
     this.onTransport,
+    this.showScene = true,
+    required this.scene,
   });
   final String transport;
+  final CompanionSceneState scene;
   final List<String>? transports;
   final ValueChanged<String>? onTransport;
   final Widget child, summary;
-  final bool ready, busy;
+  final bool ready, busy, showScene;
   final bool Function()? validate;
   final VoidCallback? finish;
   @override
@@ -31,6 +35,10 @@ class _PeripheralWizardState extends State<PeripheralWizard> {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (widget.showScene) ...[
+        CompanionScene(scene: widget.scene),
+        const SizedBox(height: 24),
+      ],
       Text(
         '${step + 1} din 3 · ${['Conexiune', 'Dispozitiv', 'Verificare'][step]}',
       ),

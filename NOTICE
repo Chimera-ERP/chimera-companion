@@ -1,0 +1,15 @@
+Required Notice: Copyright (c) 2026 Chimera ERP contributors (https://chimeraerp.ro).
+
+Chimera Companion's own code is made available under the PolyForm Shield License
+1.0.0. See LICENSE or https://polyformproject.org/licenses/shield/1.0.0.
+
+Third-party software is not relicensed by this notice. Flutter and its dependencies
+retain their bundled license notices. The unmodified Datecs Romania SDK at
+android/app/libs/datecs-rou-1.0.8.jar belongs to DATECS LTD; it is not offered under
+PolyForm Shield. Its official source, exact checksums and integration provenance
+are documented in docs/vendor-provenance.md. The vendor archive does not include a
+separate redistribution license; this project does not grant rights to that SDK.
+
+Protocol references and other third-party attribution are documented in
+docs/vendor-provenance.md. Hardware protocol compatibility requires separate
+validation on the actual device.

@@ -4,9 +4,15 @@ import '../companion_app_bar.dart';
 import 'console_service.dart';
 
 class ConsolePage extends StatefulWidget {
-  const ConsolePage({super.key, required this.service, this.embedded = false});
+  const ConsolePage({
+    super.key,
+    required this.service,
+    this.embedded = false,
+    this.application = 'KDS',
+  });
   final ConsoleService service;
   final bool embedded;
+  final String application;
   @override
   State<ConsolePage> createState() => _ConsolePageState();
 }
@@ -57,7 +63,7 @@ class _ConsolePageState extends State<ConsolePage> {
               Text(
                 s.leased || s.testing
                     ? s.title
-                    : 'Conectează prin USB OTG, apoi selectează acest Companion în KDS.',
+                    : 'Conectează prin USB OTG, apoi selectează acest Companion în ${widget.application}.',
               ),
               if (s.testing) ...[
                 const SizedBox(height: 8),

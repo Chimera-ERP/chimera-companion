@@ -1,0 +1,110 @@
+name: Android build and release
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: companion-release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          flutter-version: '3.44.3'
+          channel: stable
+          cache: true
+      - run: flutter pub get --enforce-lockfile
+      - run: flutter analyze
+      - run: node --test tool/release.test.mjs
+      - name: Flutter regression suite
+        run: flutter test
+
+  release:
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: Require increasing release and Android version
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node tool/release.mjs plan
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        if: steps.plan.outputs.publish == 'true'
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        if: steps.plan.outputs.publish == 'true'
+        with:
+          flutter-version: '3.44.3'
+          channel: stable
+          cache: true
+      - name: Restore existing signing identity
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.COMPANION_KEYSTORE_BASE64 }}
+        run: |
+          umask 077
+          python3 - <<'PY'
+          import os, base64, pathlib
+          key = base64.b64decode(os.environ['KEYSTORE_BASE64'], validate=True)
+          if not key: raise SystemExit('Missing signing key')
+          pathlib.Path(os.environ['RUNNER_TEMP'], 'companion.keystore').write_bytes(key)
+          PY
+      - name: Build signed APK
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          COMPANION_KEYSTORE_PATH: ${{ runner.temp }}/companion.keystore
+          COMPANION_KEYSTORE_PASSWORD: ${{ secrets.COMPANION_KEYSTORE_PASSWORD }}
+          COMPANION_KEY_ALIAS: ${{ secrets.COMPANION_KEY_ALIAS }}
+          COMPANION_KEY_PASSWORD: ${{ secrets.COMPANION_KEY_PASSWORD }}
+        run: |
+          flutter pub get --enforce-lockfile
+          flutter build apk --release
+      - name: Verify package, version, certificate and package manifest
+        if: steps.plan.outputs.publish == 'true'
+        run: |
+          export AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+          export APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          node tool/release.mjs package build/app/outputs/flutter-apk/app-release.apk
+      - name: Attest the APK build provenance
+        if: steps.plan.outputs.publish == 'true'
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4
+        with:
+          subject-path: release/*.apk
+      - name: Preserve the verification bundle
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          BUNDLE_PATH: ${{ steps.attest.outputs.bundle-path }}
+        run: cp "$BUNDLE_PATH" release/companion.apk.sigstore.json
+      - name: Publish verified release atomically
+        if: steps.plan.outputs.publish == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.plan.outputs.tag }}
+        run: |
+          gh release create "$TAG" release/*.apk release/companion-update.json release/SHA256SUMS release/companion.apk.sigstore.json --draft --target "$GITHUB_SHA" --title "Companion $TAG" --notes-file release/notes.md
+          gh release edit "$TAG" --draft=false --latest
+      - name: Remove runner signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/companion.keystore"

@@ -162,3 +162,24 @@ currency mapping (RON 946). No cloud OAuth and no Viva fiscalisation service.
 Only sanitized confirmation results enter the journal; card metadata is discarded.
 TLS uses an explicit terminal certificate pin, not a trust-all callback.
 Demo vs live is determined by the terminal application, not a URL switch.
+
+## Rive
+
+Flutter runtime `rive 0.14.11` / `rive_native 0.1.11`, MIT:
+https://github.com/rive-app/rive-flutter and https://pub.dev/packages/rive_native.
+Original Companion illustrations, timelines and state machines are authored in
+`design/companion-motion/scene.rml`, with official Rive CLI1.9.0. No third-party
+community artwork, scripts, fonts or remote media are included in these scenes.
+The user-supplied Chimera logo is the unchanged local Desktop screenshot
+`Screenshot 2026-03-09 at 20.51.25.png`, preserved as
+`design/companion-motion/chimera.png`. Rive difference compositing adapts its
+monochrome ink for the OLED canvas; the mark is not traced or replaced.
+The exported `.riv` and fourteen fallback stills are bundled for offline use.
+The user authorized upload/export on 2026-11-05. The project is bound in
+`rive.yaml` (project261552/file2707026, revision49548382). The latest export
+explicitly reports the Free-plan Rive splash branding (even though the JSON
+compiler warning array is empty). Earlier absence-of-warning evidence does not
+establish an unbranded export. Vendor branding is retained and remains controlled
+by the account entitlement.
+Flutter includes runtime dependency notices in its license registry. Rive CLI is
+a development tool, not an APK dependency.

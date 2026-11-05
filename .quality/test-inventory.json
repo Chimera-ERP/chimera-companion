@@ -165,6 +165,25 @@
       ]
     },
     {
+      "id": "chimera-companion:2258cfee96806b06471e",
+      "repository": "chimera-companion",
+      "source": "test/companion_scene_test.dart",
+      "title": "companion_scene_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "All bundled artboards import and advance through assembly and continuous idle in the real Rive Flutter runtime",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/companion_scene_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Host runtime; does not establish Android GPU, performance or physical-display acceptance",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:44e701078903d894655c",
       "repository": "chimera-companion",
       "source": "test/connectivity_client_test.dart",
@@ -775,13 +794,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "unit",
+      "behavior": "Default PIN-first enrollment, Enterprise host selection and PIN clearing, rejected-PIN shortcut threshold, single-flight submission and persisted enrollment restoration",
       "ruleIds": [],
       "scenarioIds": [],
       "command": "flutter test test/pairing_test.dart",
-      "metadataStatus": "needs-classification",
+      "metadataStatus": "documented",
       "limitations": [
+        "Injected enrollment service; no live ERP enrollment or credential issuance",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -994,13 +1014,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "unit",
+      "behavior": "Audience-specific applications and equipment, legacy profile inference and stable supported step selection",
       "ruleIds": [],
       "scenarioIds": [],
       "command": "flutter test test/setup_profile_test.dart",
-      "metadataStatus": "needs-classification",
+      "metadataStatus": "documented",
       "limitations": [
+        "Pure configuration; physical peripheral setup is not exercised",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -1012,13 +1033,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "unit",
+      "behavior": "Onboarding and printer setup render without overflow in portrait, short landscape and wide windows",
       "ruleIds": [],
       "scenarioIds": [],
       "command": "flutter test test/setup_visual_test.dart",
-      "metadataStatus": "needs-classification",
+      "metadataStatus": "documented",
       "limitations": [
+        "Flutter widget capture with bundled motion stills; live Rive browser inspection recorded separately",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -1077,6 +1099,25 @@
       ]
     },
     {
+      "id": "chimera-companion:7152aef7252c84793581",
+      "repository": "chimera-companion",
+      "source": "test/tls_setup_flow_test.dart",
+      "title": "tls_setup_flow_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Connection preparation is single-flight, completes only on provisioning success, hides technical diagnostics under Advanced and redetects the network on explicit retry",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/tls_setup_flow_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Injected provisioning and network discovery; certificate verification is covered separately in tls_provisioning_test.dart",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:a148fb322f54831d2670",
       "repository": "chimera-companion",
       "source": "test/tremol_password_test.dart",
@@ -1109,6 +1150,25 @@
       "command": "flutter test test/two_companion_checkout_test.dart",
       "metadataStatus": "needs-classification",
       "limitations": [
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:6ab2239ce25752558e2a",
+      "repository": "chimera-companion",
+      "source": "test/update_release_test.dart",
+      "title": "update_release_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Public GitHub update discovery, bounded trusted redirects, upgrade-only version checks, APK size/hash verification and partial-file cleanup",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/update_release_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic HTTP transport; native installer and public release are verified separately",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -1164,6 +1224,25 @@
       "metadataStatus": "needs-classification",
       "limitations": [
         "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:5ed812080811a53b78ba",
+      "repository": "chimera-companion",
+      "source": "tool/release.test.mjs",
+      "title": "release.test.mjs",
+      "line": 1,
+      "discovery": "file-unresolved",
+      "runner": "jest",
+      "level": "unit",
+      "behavior": "Release packaging rejects incompatible Android identity, certificate, debug mode and version metadata; manifests bind the exact source commit",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "npm test -- tool/release.test.mjs",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic APK-tool output; actual apksigner and aapt are required in the release job",
+        "Dynamic case names require runner discovery; no executable case is inferred."
       ]
     }
   ]

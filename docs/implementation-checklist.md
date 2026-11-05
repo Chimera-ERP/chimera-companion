@@ -1,5 +1,47 @@
 # Chimera Companion — implementation status
 
+## Companion onboarding and motion — 2026-11-05
+
+Implemented in Companion; Rive source upload/export was explicitly authorized
+in the follow-up. The user subsequently authorized the Companion update feed
+publication for an iMin trial. No subagents, physical operations, APK installation
+or hosted website publication.
+
+- [x] PIN-first enrollment on `https://chimeraerp.ro`, contextual ERP help and explicit Enterprise/self-hosted URL and Chimera Cloud label. Three rejected PINs expose the shortcut; the existing signed proof, attempt identity and secure storage are preserved.
+- [x] Audience and equipment are separate. Legacy profiles retain stable step IDs and hardware data. Navigation follows the selected equipment; the wizard no longer promises a total before the route is known. The desktop rail shows actual stage names and completion indicators without numbered totals.
+- [x] Automatic local connection with network/certificate controls under Advanced. Explanations are available through shared touch-friendly information buttons; actual errors remain visible. Existing TLS verification and single-flight/explicit retry behavior are preserved.
+- [x] OLED black canvas, blue accents and readable light-blue secondary actions in both Forui and Material. Back is in the top app bar. The primary footer action has a full-width 56px minimum target and separate spacing from optional actions.
+- [x] Fourteen distinct Rive scenes: Chimera splash, PIN handoff, front counter, production/KDS, equipment selection, secure network, fiscal register/receipt, contactless payment, weighing, production printing, customer display, Ulanzi custom keyboard, completion and Ethernet attention. Step-to-artboard selection replaces the repeated audience illustration on hardware steps. Standalone printer/scale wizards use their own scenes.
+- [x] Local Chimera logo found in Desktop screenshot `2026-03-09 at 20.51.25`; original bytes are preserved in `design/companion-motion/chimera.png`. Rive compositing adapts the monochrome mark to the black canvas. Native Android launch resources and Flutter's actual loading screen use the Chimera splash, without an artificial startup delay.
+- [x] Rive project bound to project261552/file2707026; latest pushed revision49548382. Local `.riv` export is 388772 bytes. The CLI explicitly reports Free-plan Rive branding, despite an empty JSON warning array; prior absence-of-warning evidence does not prove an unbranded export. RML, embedded logo and fourteen offline stills are retained. No plan purchase or website publication.
+- [x] Follow-up: persistent wizard hero, one decoded file per app tree, visible-frame crossfades and controller retention while paused. The equipment illustration reflects only selected peripherals, including empty selection. KDS/PDS/custom routes reuse the existing Ulanzi service and page at new step10, with explicit USB actions and optional deferral.
+- [x] 87 selected Flutter tests pass, including real Rive import/assembly/idle for every artboard, short/long route navigation, top back-button placement and footer geometry, contextual-help disclosure, enrollment/TLS, updates and peripheral settings. `flutter analyze`, Rive verification/inspection, Android debug APK and quality checks pass.
+
+- [x] User-authorized iMin trial publication: version0.1.43+45, optimized release APK (87599425bytes), SHA256`9d9459cdc3be853c00c6d257261ce5293aad0b71dad963723bd1779e65b40090`. Same Android signing certificate as published0.1.42+44; package/version, non-debuggable flag, ARM64 Rive runtime and bundled motion bytes verified. Eighteen update/Rive regression tests pass after version bump. Existing ERP publisher reused; public-feed download verification is recorded separately in the release receipt.
+- [x] Restored missing local Auth3055 and ERP3012 processes with their existing configuration; gateway3011/connectivity8090 were already running. No credential changes or migrations. GitHub inspection confirms a private Companion repository, zero workflows and a manually published0.1.42 APK matching the old feed. No GitHub workflow, tag or release created by this publication.
+
+Final evidence lives in ignored
+`.quality-receipts/companion-onboarding-2026-11-05/follow-up/`: source fingerprint,
+exact commands, logs, source/asset/APK hashes and screenshots. Native widget
+captures cover390x844,844x390 and1280x800. Actual Flutter/Rive browser inspection
+uses isolated synthetic enrollment/provisioning and verifies the updated PIN,
+peripheral artwork, top back action, footer, Advanced/help dialogs and responsive
+layouts; selection updates/empty selection and the keyboard step are also inspected. The temporary local preview is at `http://127.0.0.1:8768/?screen=pin`
+with fake PIN123456; it does not enroll a real device.
+
+Limits: no live ERP enrollment, real LAN certificate issuance, physical hardware,
+Android visual/GPU or OS splash acceptance. Debug APK was built with per-command
+Homebrew JDK17 because the global JDK26 is incompatible with the current Gradle;
+no global Java setting was changed. APK remains at
+`build/app/outputs/flutter-apk/app-debug.apk`; the published trial APK is
+`build/app/outputs/flutter-apk/app-release.apk`. Publication evidence is in
+`.quality-receipts/companion-onboarding-2026-11-05/release-0.1.43/`.
+The full hardware-oriented suite was
+not run; checks match this UI/enrollment/connection/runtime impact. Reduced motion
+remains outside scope. Next: user installation through Companion’s update action and physical iMin trial.
+Existing D200 work below stays deferred. Concurrent generated quality-contract
+changes are preserved; ERP/POS are unchanged by this increment.
+
 ## D200 firmware branding and Companion-only operation — 2026-10-25
 
 Owner: Companion/hardware maintainers. Work deferred at the user's request for a

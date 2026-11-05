@@ -1,3 +1,4 @@
+import 'support/still_widget.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -55,7 +56,8 @@ void main() {
       final service = PreviewScale();
       final theme = FTheme.neutral.dark.touch;
       final boundary = GlobalKey();
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           theme: theme.toApproximateMaterialTheme(),
           builder: (_, child) => FTheme(data: theme, child: child!),
@@ -118,7 +120,7 @@ void main() {
       service.notifyListeners();
       await tester.pump();
       expect(find.text('— g'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
+      await pumpStillWidget(tester, const SizedBox());
     });
   }
 }

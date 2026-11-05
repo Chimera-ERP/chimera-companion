@@ -325,14 +325,26 @@ Design references: [Android Presentation](https://developer.android.com/referenc
 [Forui dialogs](https://forui.dev/docs/widgets/overlay/dialog), and
 [Android Settings](https://developer.android.com/reference/android/provider/Settings).
 
-The POS Settings download uses the existing public ERP release manifest and its
-immutable APK path. It does not include enrollment or operator credentials.
-The shared Companion app bar exposes **Verifică actualizările** on every page,
-including initial setup, nested details and diagnostics. Before enrollment, the
-update dialog accepts an ERP HTTPS address; after enrollment it uses the saved
-ERP. The existing manifest bounds, digest and Android package/signature checks
-remain enforced. Update dialogs suspend bridge commands, retain any preexisting
-configuration lock, and cannot open during an active device operation.
+The current development distribution builds the Android release APK locally and
+publishes it through ERP `scripts/publish-companion-update.mjs`. The publisher
+requires an increasing build number and atomically replaces the manifest after
+writing the hash-addressed APK. New Companion releases are built and published by the GitHub workflow described
+in [README](../README.md#android-releases). The public update authority is
+`Chimera-ERP/chimera-companion`; the latest stable release includes a bounded
+`companion-update.json` manifest with package, build/version, size, SHA256,
+installed certificate fingerprint, source commit and immutable GitHub APK URL.
+Only GitHub release URLs for that repository and HTTPS redirects to
+`release-assets.githubusercontent.com` are accepted. APK size/hash and native
+package, increasing version and installed signing identity remain enforced.
+
+The initial update can be checked without enrollment. The update dialog no longer
+asks for an ERP URL. Shared app bars expose the update action on every page;
+updates cannot begin during a hardware operation and preserve the existing
+configuration lock. Installation still requires explicit Android confirmation.
+
+Old clients and POS download links retain the ERP manifest as a compatibility
+bridge. Publishing the exact GitHub-built APK there must preserve its digest and
+increasing build number; it must not rebuild or re-sign it locally.
 
 | Operation | Payload | Result |
 | --- | --- | --- |

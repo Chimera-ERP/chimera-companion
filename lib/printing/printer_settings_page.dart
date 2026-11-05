@@ -1,3 +1,4 @@
+import '../companion_scene.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -169,6 +170,8 @@ class _PrinterSettingsPageState extends State<PrinterSettingsPage> {
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 560),
               child: PeripheralWizard(
+                scene: CompanionSceneState.printer,
+                showScene: !widget.embedded,
                 transport: protocol == 'niimbot' ? 'Bluetooth' : 'LAN',
                 transports: const ['Bluetooth', 'LAN'],
                 onTransport: (type) => setState(() {

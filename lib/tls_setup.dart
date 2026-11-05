@@ -10,12 +10,25 @@ import 'connectivity_client.dart';
 import 'setup_header.dart';
 import 'companion_dialog.dart';
 import 'android_settings.dart';
+import 'companion_scene.dart';
+import 'companion_help.dart';
 
 /// Manual CSR mode never asks the administrator to supply a private key.
 class TlsSetup extends StatefulWidget {
-  const TlsSetup({super.key, required this.onCompleted, this.action});
+  const TlsSetup({
+    super.key,
+    required this.onCompleted,
+    this.action,
+    this.showScene = true,
+    this.detectAddress = detectLanAddress,
+    this.configureConnection,
+  });
+  final Future<({String name, String ip})> Function() detectAddress;
+  final Future<void> Function(String ip, String? interfaceName)?
+  configureConnection;
   final VoidCallback onCompleted;
   final ValueNotifier<SetupAction?>? action;
+  final bool showScene;
   @override
   State<TlsSetup> createState() => _TlsSetupState();
 }
@@ -42,6 +55,13 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
   String? _interface;
   String? _csr, _message;
   bool _busy = false;
+  bool _completed = false;
+  bool _detecting = true;
+  CompanionSceneState get _scene => _completed
+      ? CompanionSceneState.ready
+      : _message != null
+      ? CompanionSceneState.attention
+      : CompanionSceneState.connecting;
   void _syncAction() => widget.action?.value = SetupAction(
     _busy
         ? 'Securizare în curs…'
@@ -51,39 +71,32 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
     _busy
         ? null
         : _automatic
-        ? _configureAutomatically
+        ? _detectLan
         : _advanced,
     busy: _busy,
+    scene: _scene,
   );
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _syncAction();
+      if (mounted) _detectLan();
     });
     _restoreCsr();
-    _detectLan();
   }
 
-  Future<void> _detectLan() async {
-    if (_busy) return;
-    try {
-      final address = await detectLanAddress();
-      if (!mounted) return;
-      _change(() {
-        _ip.text = address.ip;
-        _interface = address.name;
-      });
-      if (_automatic) await _configureAutomatically();
-    } catch (error) {
-      if (mounted) {
-        _change(
-          () => _message = error is HttpException ? error.message : '$error',
-        );
-      }
-    }
-  }
+  Future<void> _detectLan() => _run(() async {
+    _change(() => _detecting = true);
+    final address = await widget.detectAddress();
+    if (!mounted) return;
+    _change(() {
+      _ip.text = address.ip;
+      _interface = address.name;
+      _detecting = false;
+    });
+    if (_automatic) await _configure();
+  });
 
   Future<void> _restoreCsr() async {
     try {
@@ -108,18 +121,26 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _configureAutomatically() => _run(() async {
-    final client = ConnectivityClient(provisioning: await _provisioning());
-    await client.configure(
-      _ip.text,
-      interfaceName: _interface,
-      onlyIfDue: true,
-    );
+  Future<void> _configureAutomatically() => _run(_configure);
+
+  Future<void> _configure() async {
+    _change(() => _detecting = false);
+    if (widget.configureConnection != null) {
+      await widget.configureConnection!(_ip.text, _interface);
+    } else {
+      final client = ConnectivityClient(provisioning: await _provisioning());
+      await client.configure(
+        _ip.text,
+        interfaceName: _interface,
+        onlyIfDue: true,
+      );
+    }
     if (mounted) {
       if (_dialogUpdate != null) Navigator.of(context).pop();
+      _completed = true;
       widget.onCompleted();
     }
-  });
+  }
 
   @override
   void dispose() {
@@ -137,7 +158,7 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
   }
 
   Future<void> _run(Future<void> Function() action) async {
-    if (_busy) return;
+    if (_busy || _completed) return;
     _change(() {
       _busy = true;
       _message = null;
@@ -154,7 +175,7 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
     } finally {
       if (mounted) {
         _change(() => _busy = false);
-        _syncAction();
+        if (!_completed) _syncAction();
       }
     }
   }
@@ -194,12 +215,33 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Wrap(
+                  spacing: 12,
+                  children: [
+                    OutlinedButton.icon(
+                      onPressed: _busy ? null : _settings,
+                      icon: const Icon(Icons.wifi, size: 18),
+                      label: const Text('Setări Wi-Fi'),
+                    ),
+                    TextButton.icon(
+                      onPressed: _busy ? null : _detectLan,
+                      icon: const Icon(Icons.refresh, size: 18),
+                      label: const Text('Reverifică rețeaua'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _ip,
                   enabled: !_busy,
                   onChanged: (_) => _interface = null,
                   decoration: const InputDecoration(
                     labelText: 'IP LAN al Companion-ului',
+                    suffixIcon: CompanionHelpButton(
+                      title: 'Adresa din rețeaua locației',
+                      message:
+                          'Adresa este detectată automat. Modific-o doar dacă acest dispozitiv folosește o altă interfață de rețea.',
+                    ),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -215,13 +257,23 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
                         },
                 ),
                 if (!_automatic) ...[
-                  const Text(
-                    'CSR și certificat individual',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Cheia privată este generată aici și nu părăsește telefonul. Certificatul trebuie emis de o autoritate în care browserul are încredere.',
+                  const Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'CSR și certificat individual',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                      CompanionHelpButton(
+                        title: 'Despre certificatul manual',
+                        message:
+                            'Cheia privată este generată aici și nu părăsește telefonul. Certificatul trebuie emis de o autoritate în care browserul are încredere.',
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   TextField(
@@ -231,10 +283,12 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
                     keyboardType: TextInputType.url,
                     enabled: !_busy,
                     decoration: const InputDecoration(
-                      labelText: 'Endpoint reverse proxy HTTPS (opțional)',
-                      helperText:
-                          'Proxy-ul trebuie să valideze TLS-ul backend; nu folosi HTTP sau tls_insecure_skip_verify.',
-                      helperMaxLines: 3,
+                      labelText: 'Reverse proxy HTTPS',
+                      suffixIcon: CompanionHelpButton(
+                        title: 'Despre reverse proxy',
+                        message:
+                            'Opțional. Proxy-ul trebuie să valideze TLS-ul backend; nu folosi HTTP sau tls_insecure_skip_verify.',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -246,7 +300,12 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
                     enabled: !_busy,
                     decoration: const InputDecoration(
                       labelText: 'Hostname Companion',
-                      hintText: 'Hostname configurat în DNS',
+                      hintText: 'companion.exemplu.ro',
+                      suffixIcon: CompanionHelpButton(
+                        title: 'Despre hostname',
+                        message:
+                            'Folosește numele configurat în DNS pentru acest Companion. Certificatul trebuie să fie emis pentru același nume.',
+                      ),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -343,6 +402,7 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
                               );
                               if (mounted && context.mounted) {
                                 Navigator.of(context).pop();
+                                _completed = true;
                                 widget.onCompleted();
                               }
                             }),
@@ -370,65 +430,54 @@ class _TlsSetupState extends State<TlsSetup> with WidgetsBindingObserver {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
+      if (widget.showScene) ...[
+        CompanionScene(scene: _scene),
+        const SizedBox(height: 24),
+      ],
       Text(
-        _ip.text.isEmpty
-            ? 'Se caută o conexiune Wi-Fi sau Ethernet…'
-            : 'Adresă detectată: ${_ip.text}',
-        style: Theme.of(context).textTheme.titleMedium,
+        _completed
+            ? 'Conexiunea este pregătită'
+            : _message != null
+            ? 'Conexiunea are nevoie de atenție'
+            : !_automatic
+            ? 'Configurare manuală'
+            : _detecting
+            ? 'Găsim rețeaua locației'
+            : 'Pregătim conexiunea sigură',
+        textAlign: TextAlign.center,
+        style: Theme.of(context).textTheme.titleLarge,
       ),
       const SizedBox(height: 12),
-      Text(
-        _automatic
-            ? 'Securizarea conexiunii cu POS-ul este automată.'
-            : 'Certificat administrat manual.',
-        style: Theme.of(context).textTheme.bodySmall,
+      Semantics(
+        liveRegion: true,
+        child: Text(
+          _message != null
+              ? 'Verifică accesul la internet și conectarea la rețeaua locației, apoi reîncearcă.'
+              : !_automatic
+              ? 'Continuă din setările avansate.'
+              : 'Companion se ocupă de configurare. Durează câteva momente.',
+          textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.bodyMedium,
+        ),
       ),
-      const SizedBox(height: 20),
-      Wrap(
-        spacing: 12,
-        runSpacing: 8,
-        children: [
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _settings,
-            icon: const Icon(Icons.wifi, size: 18),
-            label: const Text('Setări Wi-Fi'),
-          ),
-          OutlinedButton.icon(
-            onPressed: _busy ? null : _detectLan,
-            icon: const Icon(Icons.refresh, size: 18),
-            label: const Text('Reverifică rețeaua'),
-          ),
-        ],
-      ),
-      const SizedBox(height: 12),
-      Align(
-        alignment: Alignment.centerLeft,
+      const SizedBox(height: 24),
+      Center(
         child: TextButton.icon(
           onPressed: _busy ? null : _advanced,
           icon: const Icon(Icons.tune, size: 18),
-          label: const Text('Setări avansate'),
+          label: const Text('Avansat'),
         ),
       ),
-      if (_message != null)
-        Padding(
-          padding: const EdgeInsets.only(top: 16),
-          child: Text(_message!, style: const TextStyle(color: Colors.amber)),
-        ),
-      if (_busy)
-        const Padding(
-          padding: EdgeInsets.only(top: 16),
-          child: LinearProgressIndicator(),
-        ),
-      if (widget.action == null)
+      if (widget.action == null && !_completed)
         Padding(
           padding: const EdgeInsets.only(top: 16),
           child: FilledButton(
             onPressed: _busy
                 ? null
                 : _automatic
-                ? _configureAutomatically
+                ? _detectLan
                 : _advanced,
-            child: const Text('Continuă'),
+            child: Text(_busy ? 'Se configurează…' : 'Reîncearcă'),
           ),
         ),
     ],

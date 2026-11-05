@@ -1,3 +1,4 @@
+import 'support/still_widget.dart';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +34,8 @@ void main() {
     'Viva step exposes local defaults, manual IP and explicit connection test',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         const MaterialApp(home: DeviceSetupPage(initialStep: 3)),
       );
       await tester.pumpAndSettle();

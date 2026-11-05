@@ -1,3 +1,4 @@
+import 'support/still_widget.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' as ui;
@@ -39,7 +40,10 @@ class Discovery extends NiimbotDiscovery {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   setUpAll(() async {
-    await (FontLoader('packages/forui/Inter')..addFont(rootBundle.load('packages/forui/assets/fonts/inter/Inter.ttf'))).load();
+    await (FontLoader('packages/forui/Inter')..addFont(
+          rootBundle.load('packages/forui/assets/fonts/inter/Inter.ttf'),
+        ))
+        .load();
   });
   for (final size in [
     const Size(390, 844),
@@ -57,7 +61,8 @@ void main() {
       final discovery = Discovery();
       addTearDown(discovery.dispose);
       final key = GlobalKey();
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         RepaintBoundary(key: key, child: const CompanionApp()),
       );
       await tester.pumpAndSettle();
@@ -97,9 +102,11 @@ void main() {
         });
       }
       await tester.ensureVisible(find.text('Continuă'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Continuă'));
       await tester.pumpAndSettle();
       await tester.ensureVisible(find.text('Salvează'));
+      await tester.pumpAndSettle();
       await tester.tap(find.text('Salvează'));
       await tester.pumpAndSettle();
       final config = jsonDecode(
@@ -113,7 +120,7 @@ void main() {
       expect(config['modelId'], 4096);
       expect(config['widthDots'], 384);
       expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
+      await pumpStillWidget(tester, const SizedBox());
     });
   }
 }

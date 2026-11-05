@@ -18,11 +18,13 @@ class DebugScaffold extends StatelessWidget {
     required this.title,
     required this.body,
     this.actions,
+    this.leading,
     this.showDebug = false,
     this.busy = false,
   });
   final String title;
   final Widget body;
+  final Widget? leading;
   final List<Widget>? actions;
   final bool showDebug;
   final bool busy;
@@ -30,6 +32,7 @@ class DebugScaffold extends StatelessWidget {
   Widget build(BuildContext context) => Scaffold(
     appBar: CompanionAppBar(
       title: Text(title),
+      leading: leading,
       actions: actions ?? [],
       busy: busy,
     ),

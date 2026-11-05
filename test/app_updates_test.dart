@@ -1,24 +1,22 @@
+import 'support/still_widget.dart';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter/material.dart';
 import 'package:chimera_companion/app_updates.dart';
+import 'package:chimera_companion/update_release.dart';
 import 'package:chimera_companion/companion_app_bar.dart';
 
 class FakeUpdater extends CompanionUpdater {
   bool unavailable = false;
-  bool requiresServer = true;
   bool allowed = false;
   int downloads = 0;
   CompanionRelease? release;
-  final calls = <String?>[];
+  final calls = <bool>[];
   @override
-  Future<CompanionRelease?> check({String? erpUrl}) async {
-    calls.add(erpUrl);
+  Future<CompanionRelease?> check() async {
+    calls.add(true);
     if (unavailable) throw Exception('offline');
-    if (requiresServer && (erpUrl == null || erpUrl.isEmpty)) {
-      throw const UpdateServerRequired();
-    }
     return release;
   }
 
@@ -36,7 +34,8 @@ void main() {
     'update action follows navigation and preserves the hardware gate',
     (tester) async {
       var updating = false;
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           builder: (_, child) => CompanionUpdateScope(
             isBusy: () => false,
@@ -74,14 +73,15 @@ void main() {
     },
   );
   testWidgets(
-    'unpaired update dialog requests ERP and supports error retry on a narrow screen',
+    'unpaired update dialog checks GitHub directly and supports offline retry',
     (tester) async {
       tester.view.physicalSize = const Size(360, 640);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final updater = FakeUpdater();
-      await tester.pumpWidget(
+      final updater = FakeUpdater()..unavailable = true;
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           home: Scaffold(
             appBar: AppBar(
@@ -98,28 +98,22 @@ void main() {
       );
       await tester.tap(find.byTooltip('Verifică actualizările'));
       await tester.pumpAndSettle();
-      expect(find.text('Adresă ERP'), findsOneWidget);
+      expect(find.byType(TextField), findsNothing);
       expect(updater.calls, hasLength(1));
-      await tester.enterText(
-        find.byType(TextField),
-        'https://erp.example.test',
-      );
-      updater.unavailable = true;
-      await tester.tap(find.text('Verifică acum'));
-      await tester.pumpAndSettle();
       expect(find.textContaining('Nu pot verifica'), findsOneWidget);
       updater.unavailable = false;
       await tester.tap(find.text('Verifică acum'));
       await tester.pumpAndSettle();
       expect(find.textContaining('Aplicația este la zi.'), findsOneWidget);
-      expect(updater.calls.last, 'https://erp.example.test');
+      expect(updater.calls, hasLength(2));
       expect(tester.takeException(), isNull);
       await tester.tap(find.text('Închide'));
       await tester.pumpAndSettle();
     },
   );
   testWidgets('busy device cannot open update installer', (tester) async {
-    await tester.pumpWidget(
+    await pumpStillWidget(
+      tester,
       MaterialApp(
         home: Scaffold(
           appBar: AppBar(
@@ -138,7 +132,6 @@ void main() {
       isNull,
     );
   });
-  final erp = Uri.parse('https://erp.example.com');
   final hash = List.filled(64, 'a').join();
   Map<String, dynamic> manifest() => {
     'version': 1,
@@ -147,7 +140,9 @@ void main() {
     'versionName': '0.1.1',
     'size': 100,
     'sha256': hash,
-    'path': '/api/companion-updates/$hash.apk',
+    'url':
+        'https://github.com/$companionReleaseRepository/releases/download/v0.1.1/companion-0.1.1.apk',
+    'signingCertificateSha256': companionSigningCertificate,
   };
   for (final size in [
     const Size(360, 640),
@@ -161,9 +156,7 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      final updater = FakeUpdater()
-        ..requiresServer = false
-        ..release = CompanionRelease(manifest(), erp);
+      final updater = FakeUpdater()..release = CompanionRelease(manifest());
       final settings = <String>[];
       const channel = MethodChannel('chimera/settings');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
@@ -175,7 +168,8 @@ void main() {
         () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(channel, null),
       );
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           theme: ThemeData.dark(),
           home: MediaQuery(
@@ -237,16 +231,16 @@ void main() {
             .width,
         lessThanOrEqualTo(560),
       );
-      await tester.pumpWidget(const SizedBox());
+      await pumpStillWidget(tester, const SizedBox());
     });
   }
-  test('accepts versioned same-origin immutable APK', () {
-    expect(CompanionRelease(manifest(), erp).url.host, 'erp.example.com');
+  test('accepts versioned GitHub release APK', () {
+    expect(CompanionRelease(manifest()).url.host, 'github.com');
   });
   for (final mutation in [
-    {'path': 'https://evil.example/app.apk'},
-    {'path': 'http://erp.example.com/app.apk'},
-    {'path': '/api/companion-updates/$hash.apk?redirect=evil'},
+    {'url': 'https://evil.example/app.apk'},
+    {'url': 'http://erp.example.com/app.apk'},
+    {'url': '/api/companion-updates/$hash.apk?redirect=evil'},
     {'sha256': '../key'},
     {'packageName': 'other'},
     {'size': 300 * 1024 * 1024},
@@ -255,7 +249,7 @@ void main() {
   ]) {
     test('rejects invalid release $mutation', () {
       expect(
-        () => CompanionRelease({...manifest(), ...mutation}, erp),
+        () => CompanionRelease({...manifest(), ...mutation}),
         throwsFormatException,
       );
     });

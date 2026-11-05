@@ -1,3 +1,4 @@
+import 'support/still_widget.dart';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
@@ -43,7 +44,8 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    await tester.pumpWidget(
+    await pumpStillWidget(
+      tester,
       MaterialApp(
         builder: (_, child) =>
             FTheme(data: FTheme.neutral.dark.touch, child: child!),
@@ -72,7 +74,7 @@ void main() {
     expect(find.byType(ScalePage), findsNothing);
     await capture(tester, 'narrow');
     expect(tester.takeException(), isNull);
-    await tester.pumpWidget(const SizedBox());
+    await pumpStillWidget(tester, const SizedBox());
   });
   testWidgets(
     'display detail stays in the wide shell and survives narrow resize',
@@ -96,7 +98,8 @@ void main() {
         () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
             .setMockMethodCallHandler(CustomerDisplay.channel, null),
       );
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           builder: (_, child) =>
               FTheme(data: FTheme.neutral.dark.touch, child: child!),
@@ -123,7 +126,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.text('POS'), findsOneWidget);
       expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
+      await pumpStillWidget(tester, const SizedBox());
     },
   );
   testWidgets(
@@ -134,7 +137,8 @@ void main() {
       addTearDown(tester.view.resetDevicePixelRatio);
       Future<void> show(Size size) async {
         tester.view.physicalSize = size;
-        await tester.pumpWidget(
+        await pumpStillWidget(
+          tester,
           const MaterialApp(
             home: Scaffold(
               body: ConnectionIndicators(
@@ -183,7 +187,8 @@ void main() {
     'home has connection rows and opens diagnostics without operational buttons',
     (tester) async {
       FlutterSecureStorage.setMockInitialValues({});
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           builder: (_, child) =>
               FTheme(data: FTheme.neutral.dark.touch, child: child!),
@@ -212,7 +217,7 @@ void main() {
       expect(find.text('Doar probleme'), findsOneWidget);
       expect(find.byTooltip('Verifică actualizările'), findsOneWidget);
       expect(find.text('Mesaje conexiune'), findsOneWidget);
-      await tester.pumpWidget(const SizedBox());
+      await pumpStillWidget(tester, const SizedBox());
       await tester.pumpAndSettle();
     },
   );

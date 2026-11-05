@@ -1,3 +1,4 @@
+import 'companion_scene.dart';
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:forui/forui.dart';
@@ -54,6 +55,8 @@ class _ScalePageState extends State<ScalePage> {
         physics: widget.embedded ? const NeverScrollableScrollPhysics() : null,
         padding: widget.embedded ? EdgeInsets.zero : const EdgeInsets.all(20),
         child: PeripheralWizard(
+          scene: CompanionSceneState.scale,
+          showScene: !widget.embedded,
           transport: 'Bluetooth',
           ready: service.state.name == 'ready',
           busy: service.connecting,

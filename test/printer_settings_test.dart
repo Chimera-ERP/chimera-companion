@@ -1,3 +1,4 @@
+import 'support/still_widget.dart';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -17,7 +18,8 @@ void main() {
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
-      await tester.pumpWidget(
+      await pumpStillWidget(
+        tester,
         MaterialApp(
           builder: (_, child) =>
               FTheme(data: FTheme.neutral.dark.touch, child: child!),
@@ -70,7 +72,7 @@ void main() {
         '{"host":"192.168.1.25"}',
       );
       expect(tester.takeException(), isNull);
-      await tester.pumpWidget(const SizedBox());
+      await pumpStillWidget(tester, const SizedBox());
     },
   );
 }

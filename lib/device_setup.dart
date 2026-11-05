@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'console/console_service.dart';
+import 'console/console_page.dart';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -12,6 +14,7 @@ import 'hardware/datecs_device_client.dart';
 import 'hardware/tremol_adapter.dart';
 import 'hardware/fiscal_device.dart';
 import 'pairing.dart';
+import 'enrollment_service.dart';
 import 'setup_header.dart';
 import 'hardware/viva_connection.dart';
 import 'tls_setup.dart';
@@ -20,6 +23,8 @@ import 'customer_display_page.dart';
 import 'companion_dialog.dart';
 import 'android_settings.dart';
 import 'setup_profile.dart';
+import 'companion_scene.dart';
+import 'companion_help.dart';
 import 'scale_service.dart';
 import 'scale_page.dart';
 import 'printing/printer_settings_page.dart';
@@ -30,10 +35,14 @@ class DeviceSetupPage extends StatefulWidget {
     this.onCompleted,
     this.initialStep = 0,
     this.scales,
+    this.console,
+    this.enrollmentService = const SecureEnrollmentService(),
   }) : assert(initialStep >= 0 && initialStep <= 4);
   final VoidCallback? onCompleted;
   final int initialStep;
   final ScaleService? scales;
+  final ConsoleService? console;
+  final EnrollmentService enrollmentService;
   @override
   State<DeviceSetupPage> createState() => _DeviceSetupPageState();
 }
@@ -41,7 +50,7 @@ class DeviceSetupPage extends StatefulWidget {
 class _DeviceSetupPageState extends State<DeviceSetupPage> {
   static const _storage = FlutterSecureStorage();
   static final _actionButtonStyle = FilledButton.styleFrom(
-    minimumSize: const Size.fromHeight(48),
+    minimumSize: const Size.fromHeight(56),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
   );
   final _fields = {
@@ -64,11 +73,17 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   bool _busy = true;
   int _step = 0;
   SetupProfile _profile = SetupProfile.pos;
+  SetupAudience _audience = SetupAudience.front;
   bool _printerConfigured = false;
-  Set<int> _custom = {2, 3, 6, 7};
+  Set<int> _custom = {2, 3, 6};
   late final ScaleService _scales = widget.scales ?? ScaleService();
   List<int> get _steps {
-    final steps = setupSteps(_profile, _custom);
+    final steps = setupSteps(
+      _profile,
+      _custom,
+      audience: _audience,
+      equipment: _custom,
+    );
     // Explicit ECR/Viva links remain accessible regardless of deployment profile.
     if (!steps.contains(widget.initialStep)) {
       steps.insert(steps.length - 1, widget.initialStep);
@@ -80,6 +95,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   bool _vivaEnabled = false;
   bool _hardwareSaved = false;
   Map<String, dynamic> _savedHardware = {};
+  final _scroll = ScrollController();
+  late final ConsoleService _console = widget.console ?? ConsoleService();
   final _stepAction = ValueNotifier<SetupAction?>(null);
   String? _feedback;
   VoidCallback? _dialogRefresh;
@@ -91,6 +108,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     super.initState();
     _step = widget.initialStep;
     _scales.addListener(_scaleChanged);
+    _console.addListener(_scaleChanged);
     _load();
   }
 
@@ -104,6 +122,9 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       field.dispose();
     }
     _stepAction.dispose();
+    _scroll.dispose();
+    _console.removeListener(_scaleChanged);
+    if (widget.console == null) _console.close();
     _scales.removeListener(_scaleChanged);
     if (widget.scales == null) _scales.close();
     super.dispose();
@@ -117,17 +138,27 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       if (savedProfile != null) {
         final data = jsonDecode(savedProfile) as Map<String, dynamic>;
         _profile = SetupProfile.values.byName(data['profile'] as String);
-        _custom = (data['devices'] as List)
-            .whereType<int>()
-            .where([2, 3, 6, 7].contains)
-            .toSet();
+        _audience =
+            SetupAudience.values
+                .where((a) => a.name == data['audience'])
+                .firstOrNull ??
+            audienceFor(_profile);
+        if (!profilesFor(_audience).contains(_profile)) {
+          _profile = profilesFor(_audience).first;
+        }
+        _custom = data['version'] == 2 || _profile == SetupProfile.custom
+            ? (data['devices'] as List)
+                  .whereType<int>()
+                  .where(equipmentFor(_audience).contains)
+                  .toSet()
+            : defaultEquipment(_profile);
       }
       if (widget.initialStep == 0) {
         final savedStep = int.tryParse(
           await _storage.read(key: 'setup_step_v3') ?? '0',
         );
         if (savedProfile == null && (savedStep == null || savedStep == 0)) {
-          _step = 5;
+          _step = 0;
         } else if (savedStep != null && _steps.contains(savedStep)) {
           _step = savedStep;
         }
@@ -472,10 +503,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     if ((_step == 2 && !skipEcr) || _step == 3) await _save();
     if (mounted && (_step < 2 || _step >= 5 || skipEcr || _hardwareSaved)) {
       final next = _steps[_steps.indexOf(_step) + 1];
-      if (_step == 5) {
+      if (_step == 5 || _step == 8) {
         await _storage.write(
           key: 'setup_profile_v1',
           value: jsonEncode({
+            'version': 2,
+            'audience': _audience.name,
             'profile': _profile.name,
             'devices': _custom.toList(),
           }),
@@ -484,6 +517,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       await _storage.write(key: 'setup_step_v3', value: '$next');
       if (!mounted) return;
       _stepAction.value = null;
+      if (_scroll.hasClients) _scroll.jumpTo(0);
       setState(() {
         _step = next;
         _feedback = null;
@@ -671,9 +705,13 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
               children: [
                 if (viva) ...[
                   _input('vivaPin', 'Amprentă certificat SHA-256'),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'La verificare, certificatul poate fi preluat de la terminal. Confirmă-l doar dacă adresa este a terminalului tău.',
+                  const Align(
+                    alignment: Alignment.centerRight,
+                    child: CompanionHelpButton(
+                      title: 'Despre certificatul terminalului',
+                      message:
+                          'La verificare, certificatul poate fi preluat de la terminal. Confirmă-l doar dacă adresa este a terminalului tău.',
+                    ),
                   ),
                 ] else ...[
                   if (_model == FiscalModel.datecsDp25)
@@ -774,24 +812,98 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     ],
   );
 
+  Future<void> _back() async {
+    if (_busy || _stepAction.value?.busy == true) return;
+    final previous = _steps[_steps.indexOf(_step) - 1];
+    await _storage.write(key: 'setup_step_v3', value: '$previous');
+    if (!mounted) return;
+    _stepAction.value = null;
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+    setState(() {
+      _step = previous;
+      _feedback = null;
+    });
+  }
+
+  Widget _footer(SetupAction? stepAction) {
+    final action = switch (_step) {
+      0 || 1 => stepAction ?? const SetupAction('Se încarcă…', null),
+      2 => SetupAction(
+        _busy
+            ? 'Se verifică…'
+            : _ecrVerified
+            ? 'Continuă'
+            : 'Verifică ECR',
+        _ecrVerified ? _next : _status,
+      ),
+      3 => SetupAction(_vivaEnabled ? 'Continuă' : 'Mai târziu', _next),
+      4 => SetupAction('Finalizează', _complete),
+      _ => SetupAction(
+        _step == 5 ||
+                _step == 8 ||
+                _step == 9 ||
+                (_step == 6 && _scales.state.name == 'ready') ||
+                (_step == 7 && _printerConfigured) ||
+                (_step == 10 && _console.connected)
+            ? 'Continuă'
+            : 'Mai târziu',
+        _next,
+      ),
+    };
+    final short = MediaQuery.sizeOf(context).height < 500;
+    return Padding(
+      padding: EdgeInsets.fromLTRB(24, short ? 12 : 24, 24, short ? 12 : 24),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          FilledButton(
+            style: _actionButtonStyle,
+            onPressed: _busy ? null : action.run,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              child: Text(action.label, textAlign: TextAlign.center),
+            ),
+          ),
+          if (_step == 2) ...[
+            const SizedBox(height: 8),
+            TextButton(
+              onPressed: _busy ? null : () => _next(skipEcr: true),
+              child: const Text('Mai târziu'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) => ValueListenableBuilder<SetupAction?>(
     valueListenable: _stepAction,
     builder: (context, stepAction, _) => DebugScaffold(
       busy: _busy || stepAction?.busy == true,
       title: 'Configurare',
+      leading: _steps.indexOf(_step) > 0
+          ? IconButton(
+              tooltip: 'Înapoi',
+              constraints: const BoxConstraints(minWidth: 56, minHeight: 56),
+              onPressed: _busy || stepAction?.busy == true ? null : _back,
+              icon: const Icon(Icons.arrow_back),
+            )
+          : null,
       actions: [
-        IconButton(
-          tooltip: 'Ecran client',
-          onPressed: _busy || stepAction?.busy == true
-              ? null
-              : () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => const CustomerDisplayPage(),
+        if (_audience != SetupAudience.back)
+          IconButton(
+            tooltip: 'Ecran client',
+            onPressed: _busy || stepAction?.busy == true
+                ? null
+                : () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const CustomerDisplayPage(),
+                    ),
                   ),
-                ),
-          icon: const Icon(Icons.monitor_outlined),
-        ),
+            icon: const Icon(Icons.monitor_outlined),
+          ),
       ],
       body: SetupFrame(
         step: _step,
@@ -802,49 +914,125 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
             children: [
               Expanded(
                 child: ListView(
-                  key: ValueKey(_step),
+                  controller: _scroll,
                   padding: const EdgeInsets.fromLTRB(24, 12, 24, 20),
                   children: [
-                    SetupHeader(step: _step, steps: _steps),
-                    if (_step == 5) ...[
-                      for (final profile in SetupProfile.values)
-                        ListTile(
-                          title: Text(
-                            profile.name == 'custom'
-                                ? 'Custom'
-                                : profile.name.toUpperCase(),
-                          ),
-                          subtitle: Text(switch (profile) {
-                            SetupProfile.pos =>
-                              'Casă de marcat, plată și cântar',
-                            SetupProfile.kds || SetupProfile.pds =>
-                              'Cântar și imprimantă producție',
+                    CompanionScene(
+                      key: const ValueKey('setup-scene'),
+                      scene:
+                          (_step == 0 || _step == 1) &&
+                              stepAction?.scene != null
+                          ? stepAction!.scene!
+                          : setupSceneFor(_step, switch (_audience) {
+                              SetupAudience.front => CompanionSceneState.front,
+                              SetupAudience.back => CompanionSceneState.back,
+                              SetupAudience.custom =>
+                                CompanionSceneState.custom,
+                            }),
+                      equipment: _step == 8 ? Set.of(_custom) : null,
+                    ),
+                    const SizedBox(height: 24),
+                    SetupHeader(
+                      showScene: false,
+                      step: _step,
+                      steps: _steps,
+                      scene: switch (_audience) {
+                        SetupAudience.front => CompanionSceneState.front,
+                        SetupAudience.back => CompanionSceneState.back,
+                        SetupAudience.custom => CompanionSceneState.custom,
+                      },
+                    ),
+                    if (_step == 5)
+                      for (final audience in SetupAudience.values)
+                        SetupChoice(
+                          title: switch (audience) {
+                            SetupAudience.front => 'În fața clientului',
+                            SetupAudience.back => 'În producție',
+                            SetupAudience.custom => 'Personalizat',
+                          },
+                          description: switch (audience) {
+                            SetupAudience.front =>
+                              'Vânzare, încasare și ecran client',
+                            SetupAudience.back =>
+                              'Bucătărie, bar și pregătirea comenzilor',
+                            SetupAudience.custom =>
+                              'Toate aplicațiile și echipamentele',
+                          },
+                          icon: switch (audience) {
+                            SetupAudience.front => Icons.storefront_outlined,
+                            SetupAudience.back => Icons.soup_kitchen_outlined,
+                            SetupAudience.custom => Icons.tune,
+                          },
+                          selected: _audience == audience,
+                          onTap: _busy
+                              ? null
+                              : () => setState(() {
+                                  if (_audience == audience) return;
+                                  _audience = audience;
+                                  _profile = profilesFor(audience).first;
+                                  _custom = defaultEquipment(
+                                    _profile,
+                                  ).intersection(equipmentFor(audience));
+                                }),
+                        ),
+                    if (_step == 8) ...[
+                      const Text(
+                        'APLICAȚIE',
+                        style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+                      ),
+                      const SizedBox(height: 12),
+                      for (final profile in profilesFor(_audience))
+                        SetupChoice(
+                          title: profile == SetupProfile.custom
+                              ? 'Doar echipamente'
+                              : profile.name.toUpperCase(),
+                          description: switch (profile) {
+                            SetupProfile.pos => 'Punct de vânzare',
+                            SetupProfile.kds =>
+                              'Ecran de pregătire a comenzilor',
+                            SetupProfile.pds => 'Ecran de predare a comenzilor',
                             SetupProfile.custom =>
-                              'Alege dispozitivele necesare',
-                          }),
-                          trailing: _profile == profile
-                              ? const Icon(Icons.check_circle_outline)
-                              : null,
+                              'Conectează perifericele de care ai nevoie',
+                          },
+                          icon: profile == SetupProfile.custom
+                              ? Icons.hub_outlined
+                              : Icons.tablet_mac_outlined,
+                          selected: _profile == profile,
                           onTap: _busy
                               ? null
                               : () => setState(() => _profile = profile),
                         ),
-                      if (_profile == SetupProfile.custom)
-                        for (final id in [2, 3, 6, 7])
-                          CheckboxListTile(
-                            title: Text(setupStepTitles[id]),
-                            value: _custom.contains(id),
-                            onChanged: _busy
-                                ? null
-                                : (value) => setState(() {
-                                    if (value == true) {
-                                      _custom.add(id);
-                                    } else {
-                                      _custom.remove(id);
-                                    }
-                                  }),
-                          ),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'ECHIPAMENTE',
+                        style: TextStyle(fontSize: 11, letterSpacing: 1.8),
+                      ),
+                      const SizedBox(height: 8),
+                      for (final id in equipmentFor(_audience))
+                        CheckboxListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: Text(setupStepTitles[id]),
+                          value: _custom.contains(id),
+                          onChanged: _busy
+                              ? null
+                              : (value) => setState(() {
+                                  if (value == true) {
+                                    _custom.add(id);
+                                  } else {
+                                    _custom.remove(id);
+                                  }
+                                }),
+                        ),
                     ],
+                    if (_step == 9) const CustomerDisplayPage(embedded: true),
+                    if (_step == 10)
+                      ConsolePage(
+                        service: _console,
+                        embedded: true,
+                        application: _profile == SetupProfile.pds
+                            ? 'PDS'
+                            : 'KDS',
+                      ),
                     if (_step == 6) ScalePage(service: _scales, embedded: true),
                     if (_step == 7)
                       PrinterSettingsPage(
@@ -1054,6 +1242,8 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                     if (_step == 0)
                       SetupCard(
                         child: PairingPage(
+                          showScene: false,
+                          service: widget.enrollmentService,
                           embedded: true,
                           onCompleted: _next,
                           action: _stepAction,
@@ -1062,6 +1252,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                     if (_step == 1)
                       SetupCard(
                         child: TlsSetup(
+                          showScene: false,
                           onCompleted: _next,
                           action: _stepAction,
                         ),
@@ -1115,23 +1306,35 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                                 : 'De configurat mai târziu',
                           ),
                         ),
-                      const Divider(),
-                      ListTile(
-                        contentPadding: EdgeInsets.zero,
-                        leading: const Icon(Icons.monitor_outlined),
-                        title: const Text('Ecran client'),
-                        subtitle: const Text(
-                          'Permite afișarea în fundal înainte de a deschide POS-ul.',
+                      if (_steps.contains(10))
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.keyboard_outlined),
+                          title: const Text('Tastatură custom'),
+                          subtitle: Text(
+                            _console.connected
+                                ? 'Conectată'
+                                : 'De configurat mai târziu',
+                          ),
                         ),
-                        trailing: const Icon(Icons.chevron_right),
-                        onTap: _busy
-                            ? null
-                            : () => Navigator.of(context).push(
-                                MaterialPageRoute<void>(
-                                  builder: (_) => const CustomerDisplayPage(),
+                      if (_audience != SetupAudience.back) const Divider(),
+                      if (_audience != SetupAudience.back)
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: const Icon(Icons.monitor_outlined),
+                          title: const Text('Ecran client'),
+                          subtitle: const Text(
+                            'Permite afișarea în fundal înainte de a deschide POS-ul.',
+                          ),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _busy
+                              ? null
+                              : () => Navigator.of(context).push(
+                                  MaterialPageRoute<void>(
+                                    builder: (_) => const CustomerDisplayPage(),
+                                  ),
                                 ),
-                              ),
-                      ),
+                        ),
                       if (_feedback != null)
                         Text(
                           _feedback!,
@@ -1146,90 +1349,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                   ],
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-                decoration: const BoxDecoration(
-                  border: Border(top: BorderSide(color: Color(0xff293140))),
-                ),
-                child: Row(
-                  children: [
-                    if (_steps.indexOf(_step) > 0)
-                      IconButton(
-                        tooltip: 'Înapoi',
-                        onPressed: _busy || stepAction?.busy == true
-                            ? null
-                            : () async {
-                                await _storage.write(
-                                  key: 'setup_step_v3',
-                                  value: '${_steps[_steps.indexOf(_step) - 1]}',
-                                );
-                                if (mounted) {
-                                  _stepAction.value = null;
-                                  setState(() {
-                                    _step = _steps[_steps.indexOf(_step) - 1];
-                                    _feedback = null;
-                                  });
-                                }
-                              },
-                        icon: const Icon(Icons.arrow_back),
-                      ),
-                    if (_step == 2)
-                      TextButton(
-                        onPressed: _busy ? null : () => _next(skipEcr: true),
-                        child: const Text('Mai târziu'),
-                      ),
-                    if (_step >= 5)
-                      Expanded(
-                        child: FilledButton(
-                          style: _actionButtonStyle,
-                          onPressed: _busy ? null : _next,
-                          child: Text(
-                            _step == 5 ||
-                                    (_step == 6 &&
-                                        _scales.state.name == 'ready') ||
-                                    (_step == 7 && _printerConfigured)
-                                ? 'Continuă'
-                                : 'Mai târziu',
-                          ),
-                        ),
-                      ),
-                    if (_step == 2 || _step == 3)
-                      Expanded(
-                        child: FilledButton(
-                          style: _actionButtonStyle,
-                          onPressed: _busy
-                              ? null
-                              : _step == 2 && !_ecrVerified
-                              ? _status
-                              : _next,
-                          child: Text(
-                            _busy
-                                ? 'Se verifică…'
-                                : _step == 2
-                                ? (_ecrVerified ? 'Continuă' : 'Verifică ECR')
-                                : (!_vivaEnabled ? 'Mai târziu' : 'Continuă'),
-                          ),
-                        ),
-                      ),
-                    if (_step == 4)
-                      Expanded(
-                        child: FilledButton(
-                          style: _actionButtonStyle,
-                          onPressed: _busy ? null : _complete,
-                          child: const Text('Finalizează'),
-                        ),
-                      ),
-                    if (_step == 0 || _step == 1)
-                      Expanded(
-                        child: FilledButton(
-                          style: _actionButtonStyle,
-                          onPressed: _busy ? null : stepAction?.run,
-                          child: Text(stepAction?.label ?? 'Se încarcă…'),
-                        ),
-                      ),
-                  ],
-                ),
-              ),
+              _footer(stepAction),
             ],
           ),
         ),

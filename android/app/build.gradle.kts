@@ -4,6 +4,17 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+val releaseStore = System.getenv("COMPANION_KEYSTORE_PATH")
+val releaseCredentials = listOf("COMPANION_KEYSTORE_PASSWORD", "COMPANION_KEY_ALIAS", "COMPANION_KEY_PASSWORD")
+if (releaseStore != null) {
+    require(releaseCredentials.all { !System.getenv(it).isNullOrBlank() }) {
+        "Incomplete Companion signing configuration"
+    }
+}
+if (System.getenv("CI") == "true") {
+    require(!releaseStore.isNullOrBlank()) { "CI requires the existing Companion signing identity" }
+}
+
 android {
     namespace = "ro.tabusociety.chimera_companion"
     compileSdk = flutter.compileSdkVersion
@@ -26,11 +37,24 @@ android {
         testInstrumentationRunner = "ro.tabusociety.chimera_companion.CustomerDisplayTestRunner"
     }
 
+    signingConfigs {
+        if (releaseStore != null) {
+            create("companionRelease") {
+                storeFile = file(releaseStore)
+                storePassword = System.getenv("COMPANION_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("COMPANION_KEY_ALIAS")
+                keyPassword = System.getenv("COMPANION_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            // Existing installations use this historical identity. CI imports it
+            // explicitly; generating a new key would prevent in-place updates.
+            signingConfig = signingConfigs.getByName(
+                if (releaseStore != null) "companionRelease" else "debug"
+            )
         }
     }
 }
