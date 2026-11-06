@@ -20,7 +20,7 @@ class CompanionRelease {
       digest = json['sha256'] as String,
       url = Uri.parse(json['url'] as String) {
     if (json['version'] != 1 ||
-        json['packageName'] != 'ro.tabusociety.chimera_companion' ||
+        json['packageName'] != 'ro.chimeraerp.companion' ||
         json['signingCertificateSha256'] != companionSigningCertificate ||
         versionCode < 1 ||
         !RegExp(r'^\d+\.\d+\.\d+$').hasMatch(versionName) ||

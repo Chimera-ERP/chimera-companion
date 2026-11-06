@@ -52,3 +52,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 .quality-receipts/
+
+# Kotlin incremental compiler sessions
+.kotlin/

@@ -1,4 +1,4 @@
-package ro.tabusociety.chimera_companion
+package ro.chimeraerp.companion
 
 import com.datecs.fiscalprinter.rou.DP25ROU
 import java.math.BigDecimal

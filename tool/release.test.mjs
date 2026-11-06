@@ -2,11 +2,11 @@ import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import {version,validateApk,releaseManifest,signingCertificate} from './release.mjs';
 const v=version('version: 0.1.44+46\n');
-const badge="package: name='ro.tabusociety.chimera_companion' versionCode='46' versionName='0.1.44'";
+const badge="package: name='ro.chimeraerp.companion' versionCode='46' versionName='0.1.44'";
 const certificate=`Signer #1 certificate SHA-256 digest: ${signingCertificate}`;
-test('accepts the existing package and certificate only',()=>{
+test('accepts the canonical package and certificate, rejects legacy package',()=>{
   assert.doesNotThrow(()=>validateApk(v,badge,certificate));
-  for(const bad of [badge.replace("'46'","'45'"),badge.replace('ro.tabusociety','org.other'),badge+'\napplication-debuggable'])
+  for(const bad of [badge.replace("'46'","'45'"),badge.replace('ro.chimeraerp.companion','ro.tabusociety.chimera_companion'),badge+'\napplication-debuggable'])
     assert.throws(()=>validateApk(v,bad,certificate));
   assert.throws(()=>validateApk(v,badge,certificate.replace(signingCertificate,'a'.repeat(64))));
 });

@@ -135,7 +135,7 @@ void main() {
   final hash = List.filled(64, 'a').join();
   Map<String, dynamic> manifest() => {
     'version': 1,
-    'packageName': 'ro.tabusociety.chimera_companion',
+    'packageName': 'ro.chimeraerp.companion',
     'versionCode': 2,
     'versionName': '0.1.1',
     'size': 100,

@@ -1,4 +1,4 @@
-package ro.tabusociety.chimera_companion
+package ro.chimeraerp.companion
 
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine

@@ -26,7 +26,7 @@ ReleaseResponse redirect(String url) =>
 final apk = utf8.encode('synthetic APK bytes');
 Map<String, dynamic> manifest() => {
   'version': 1,
-  'packageName': 'ro.tabusociety.chimera_companion',
+  'packageName': 'ro.chimeraerp.companion',
   'versionCode': 46,
   'versionName': '0.1.44',
   'size': apk.length,

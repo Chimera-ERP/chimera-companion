@@ -1,6 +1,6 @@
 # chimera-companion development
 
-<!-- BEGIN GENERATED CONTRACT 451bfc66442c79fbc81c3b4fec5ec3cbb3cef2b2ab37c2f4a8955f239720feda -->
+<!-- BEGIN GENERATED CONTRACT 3bf5e5a4eeaa988a37503a43e8fbbbb821beb48f12ce62e8d0777c0f6e1d4cce -->
 # Development contract
 
 Status: current. Owner: maintainers of the affected repositories.
@@ -13,6 +13,7 @@ This contract applies to people and coding agents. Repository AGENTS.md files co
 - Identify the owning service, affected business rules, APIs, SQL, authorization, compatibility and tests. Find an existing component or service before creating another.
 - Resolve disagreements between intended rules and current behavior explicitly. Neither an old document nor current code silently overrides a product decision.
 - Keep one active checklist for a cross-repository task. Small changes do not need a separate plan document.
+- When resuming in a new chat, read the documentation index and the current handoff section first, then only the relevant domain references and source. Do not ingest the full historical checklist or every Markdown file. Maintain the existing handoff with current state, next action, evidence and limits; do not create a competing per-chat summary.
 
 ## Implementation
 
@@ -39,7 +40,7 @@ This contract applies to people and coding agents. Repository AGENTS.md files co
 
 ## Limits of enforcement
 
-Local hooks can be bypassed. Automated checks validate structure, references and selected executions; maintainers still review business meaning, assertion quality and new abstractions. CI is disabled until explicitly reactivated.
+Local hooks can be bypassed. Automated checks validate structure, references and selected executions; maintainers still review business meaning, assertion quality and new abstractions. CI policy is repository-specific: inspect the current workflow triggers and release runbook. Do not infer present CI or deployment state from a historical checklist, and do not enable broader triggers without authorization.
 <!-- END GENERATED CONTRACT -->
 
 ## Repository guidance

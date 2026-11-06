@@ -16,7 +16,7 @@ if (System.getenv("CI") == "true") {
 }
 
 android {
-    namespace = "ro.tabusociety.chimera_companion"
+    namespace = "ro.chimeraerp.companion"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -26,15 +26,15 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "ro.tabusociety.chimera_companion"
+        // Canonical identity. Legacy ro.tabusociety installs require re-enrollment.
+        applicationId = "ro.chimeraerp.companion"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
-        testInstrumentationRunner = "ro.tabusociety.chimera_companion.CustomerDisplayTestRunner"
+        testInstrumentationRunner = "ro.chimeraerp.companion.CustomerDisplayTestRunner"
     }
 
     signingConfigs {
@@ -50,7 +50,8 @@ android {
 
     buildTypes {
         release {
-            // Existing installations use this historical identity. CI imports it
+            // Retain the signing certificate. The new application ID still requires
+            // a separate install from the legacy package. CI imports the key
             // explicitly; generating a new key would prevent in-place updates.
             signingConfig = signingConfigs.getByName(
                 if (releaseStore != null) "companionRelease" else "debug"

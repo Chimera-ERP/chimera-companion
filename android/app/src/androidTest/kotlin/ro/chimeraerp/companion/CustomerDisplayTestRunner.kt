@@ -1,4 +1,4 @@
-package ro.tabusociety.chimera_companion
+package ro.chimeraerp.companion
 
 import android.app.Activity
 import android.app.Instrumentation

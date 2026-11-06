@@ -8,6 +8,26 @@ Cloud PIN enrollment uses `https://auth.chimeraerp.ro`. Auth returns the tenant'
 renews device credentials through Auth. Existing pairings without `auth_url`
 retain their ERP proxy. Enterprise/self-hosted addresses remain explicit.
 
+## Android package migration
+
+The Android application ID and Kotlin namespace are `ro.chimeraerp.companion`.
+The former `ro.tabusociety.chimera_companion` identifies a different Android app:
+installing the new APK cannot update it or read its private enrollment, TLS keys,
+settings or command journal. Stop the legacy bridge, reconcile pending/unknown
+hardware outcomes, then install and enroll the new app through the existing setup.
+Keep the old installation until that transition has been checked; never operate
+both bridges against the same equipment. No automatic export of private keys or
+journal deletion is performed. iOS/macOS/Windows identities are unchanged.
+
+The release validator and updater accept only the new package. Previously
+installed clients reject it; this is an explicit package migration, not an OTA
+upgrade. The source change does not bump a version or publish a migration release.
+ERP publication separates the canonical package under
+`/api/companion-updates/ro.chimeraerp.companion/`; the legacy `/manifest` remains
+isolated. The human `/latest.apk` link prefers the canonical package after it has
+been published. Existing manifests and package/version/signature guards are not
+relaxed to make an incompatible update appear installable.
+
 ## Android releases
 
 [GitHub Releases](https://github.com/Chimera-ERP/chimera-companion/releases/latest)
@@ -20,8 +40,7 @@ run checks without replacing an existing release.
 
 The signing certificate stays compatible with existing installations. Four
 `COMPANION_KEYSTORE_*`/`COMPANION_KEY_*` encrypted repository secrets supply the
-existing key in CI. Never generate a new key for an update, change the Android
-application ID, or publish an APK whose certificate does not match
+existing key in CI. Never generate a new key for an update or publish an APK whose certificate does not match
 `7b6ea16440c3928bc2402d9393de778c9a76a47c37e637ce898fcb8036809933`.
 The key is removed from the runner after the job and never uploaded as an artifact.
 

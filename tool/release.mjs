@@ -13,14 +13,14 @@ export function version(source) {
 export function validateApk(v,badging,certificate) {
   const pkg = /^package: name='([^']+)' versionCode='(\d+)' versionName='([^']+)'/m.exec(badging);
   const certs = [...certificate.matchAll(/^Signer #\d+ certificate SHA-256 digest: ([a-f0-9]+)$/gm)];
-  if (!pkg || pkg[1] !== 'ro.tabusociety.chimera_companion' || Number(pkg[2]) !== v.code || pkg[3] !== v.name ||
+  if (!pkg || pkg[1] !== 'ro.chimeraerp.companion' || Number(pkg[2]) !== v.code || pkg[3] !== v.name ||
     /^application-debuggable/m.test(badging) || certs.length !== 1 || certs[0][1] !== signingCertificate) {
     throw Error('APK package, version, release mode or signing identity mismatch');
   }
 }
 export function releaseManifest(v,bytes,commit) {
   if(!/^[a-f0-9]{40}$/.test(commit)) throw Error('Expected exact source commit');
-  return {version:1, packageName:'ro.tabusociety.chimera_companion', versionName:v.name,versionCode:v.code,
+  return {version:1, packageName:'ro.chimeraerp.companion', versionName:v.name,versionCode:v.code,
     size:bytes.length,sha256:createHash('sha256').update(bytes).digest('hex'),signingCertificateSha256:signingCertificate,
     url:`https://github.com/${repository}/releases/download/${v.tag}/companion-${v.name}.apk`,sourceCommit:commit};
 }
@@ -63,7 +63,7 @@ if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
     copyFileSync(apk,`release/companion-${v.name}.apk`);
     writeFileSync('release/companion-update.json',JSON.stringify(manifest,null,2)+'\n');
     writeFileSync('release/SHA256SUMS',`${manifest.sha256}  companion-${v.name}.apk\n`);
-    writeFileSync('release/notes.md',`Companion ${v.name} (Android build ${v.code}).\n\nBuilt by GitHub Actions from ${manifest.sourceCommit}.\n\nExisting installations can update in place; application data and signing identity are preserved.\n\nAPK SHA256: \`${manifest.sha256}\`\n`);
+    writeFileSync('release/notes.md',`Companion ${v.name} (Android build ${v.code}).\n\nBuilt by GitHub Actions from ${manifest.sourceCommit}.\n\nUpdates preserve data only for ro.chimeraerp.companion. Legacy ro.tabusociety.chimera_companion installs require separate installation and re-enrollment; do not run both hardware bridges simultaneously.\n\nAPK SHA256: \`${manifest.sha256}\`\n`);
     console.log(JSON.stringify(manifest));
   }else throw Error('Expected plan or package');
 }
