@@ -9,6 +9,8 @@
     "product-master-data",
     "pos-offline-sync",
     "documents-audit-trace",
+    "employee-sales-bonuses",
+    "supplier-commercial-agreements",
     "manual-document-drafts",
     "etransport-local-management",
     "financial-configuration-lifecycle",
