@@ -1,6 +1,6 @@
 # chimera-companion development
 
-<!-- BEGIN GENERATED CONTRACT 3bf5e5a4eeaa988a37503a43e8fbbbb821beb48f12ce62e8d0777c0f6e1d4cce -->
+<!-- BEGIN GENERATED CONTRACT 6e7db90f1f7a0ca27783375cbcabcd472f2788b70305110e1512a24c64d2f62c -->
 # Development contract
 
 Status: current. Owner: maintainers of the affected repositories.
@@ -27,6 +27,13 @@ This contract applies to people and coding agents. Repository AGENTS.md files co
 - Add meaningful coverage for new behavior and a regression case for a bug. Do not mirror implementation details or add tests for a wording-only edit.
 - Do not weaken assertions, remove security checks or change expected behavior merely to make a test pass. Explain necessary dependency changes.
 - Never commit credentials, personal production data, production dumps or private keys. Use synthetic fixtures and redact artifacts.
+
+## UI/UX requirements
+
+- For interface work, read the shared UI/UX requirements (`.quality/ui-ux-conventions.md`) and the pinned Flawless UI/UX skill (`.agents/skills/flawless-ui-ux/SKILL.md`). Consult [Laws of UX](https://lawsofux.com/llms.txt) for the affected decisions. Select relevant references, not the whole library for every small edit. These obligations cover people and all agents, including standalone clones.
+- Identify the user's task and primary action, reuse the existing components, and apply the relevant principles to choices, grouping, targets, feedback and responsive behavior. Preserve shadcn/native primitives, EN/RO, authorization and business semantics. Heuristics are not permission to redesign unrelated pages or weaken validation.
+- Perform the skill's final pattern pass, operate the real user path and inspect relevant wide/narrow, keyboard/touch, loading, empty, error, success and overlay states. Record decisions, reused components, observations and limits in the existing checklist or structured receipt. Static checks and a build do not establish usability or accessibility compliance.
+- The pinned skill/license and generated requirements are checked by `quality:check`; update their canonical sources through ERP's `quality:sync`. Do not replace them with unreviewed latest downloads. Optional CLI inspection uses the pinned version documented in the requirements; it supplements, not replaces, interaction and visual review.
 
 ## Verification and handoff
 

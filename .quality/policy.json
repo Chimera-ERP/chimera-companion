@@ -1,5 +1,97 @@
 {
-  "version": 1,
-  "digest": "3bf5e5a4eeaa988a37503a43e8fbbbb821beb48f12ce62e8d0777c0f6e1d4cce",
-  "text": "# Development contract\n\nStatus: current. Owner: maintainers of the affected repositories.\n\nThis contract applies to people and coding agents. Repository AGENTS.md files contain a generated copy so a standalone checkout retains these obligations. CLAUDE.md points to AGENTS.md. Change this source and run `npm run quality:sync` from the ERP repository; do not edit generated sections.\n\n## Before changing code\n\n- Read AGENTS.md and the canonical documentation relevant to the change. Inspect the branch and working tree; preserve concurrent work.\n- Identify the owning service, affected business rules, APIs, SQL, authorization, compatibility and tests. Find an existing component or service before creating another.\n- Resolve disagreements between intended rules and current behavior explicitly. Neither an old document nor current code silently overrides a product decision.\n- Keep one active checklist for a cross-repository task. Small changes do not need a separate plan document.\n- When resuming in a new chat, read the documentation index and the current handoff section first, then only the relevant domain references and source. Do not ingest the full historical checklist or every Markdown file. Maintain the existing handoff with current state, next action, evidence and limits; do not create a competing per-chat summary.\n\n## Implementation\n\n- Keep business logic in its owning service. UI, verification blocks and hardware adapters must call the existing behavior rather than copy calculations.\n- PostgreSQL business access belongs to domain SQL functions, declared in versioned SQL files. TypeScript authenticates, validates transport contracts, calls typed routines and performs external I/O; it must not build table queries or duplicate persistent business calculations. Reuse existing routines and triggers. Preserve atomicity, tenant scope, revisions, idempotency and audit steps. Runtime SQL exceptions are explicit infrastructure or read-only external-source adapters, never a generic SQL escape hatch. Run the SQL-boundary check; existing migration debt may decrease but new inline SQL must not be added.\n- Reuse shadcn controls and existing layout primitives. Do not nest decorative cards in cards, dialogs, sheets or drawers, including equivalent div wrappers.\n- Keep global search discoverability current in the same change: added, renamed, moved or removed pages/actions must update their existing router handles, navigation permissions and EN/RO i18n keys. Reuse the router-derived search index; never maintain a duplicate hand-written action catalogue. Verify that the relevant page and action can be found, and that unauthorized actions remain hidden.\n- Enforce organization, location, actor and permissions on the server. Preserve transactions, idempotency, historical records and compatibility for stock, money and documents.\n- Deliver schema changes through reproducible migrations owned by the correct repository. Do not repair only the local database.\n- Update the canonical document when behavior changes. Index new documents; use an ADR only for a durable decision. Do not create per-turn FINAL, COMPLETE, SUMMARY or PROGRESS documents.\n- Add meaningful coverage for new behavior and a regression case for a bug. Do not mirror implementation details or add tests for a wording-only edit.\n- Do not weaken assertions, remove security checks or change expected behavior merely to make a test pass. Explain necessary dependency changes.\n- Never commit credentials, personal production data, production dumps or private keys. Use synthetic fixtures and redact artifacts.\n\n## Verification and handoff\n\n- Inspect the final diff and generated contracts. Run `quality:check` and checks selected for the impact; broaden testing only for a new failure or unresolved risk.\n- For UI changes inspect the relevant loading, empty, error, success, open dialog and narrow-screen states in a browser. A build alone does not demonstrate usability.\n- Record the source fingerprint, commands, outcomes, skipped checks and reasons. Source changes invalidate earlier evidence.\n- If the user requests a manual trial first, write necessary tests and record their execution as deferred. Say implemented and ready for trial, not validated.\n- Distinguish implemented, automatically tested, manually inspected, hardware tested and legally reviewed. Mocks do not establish hardware or statutory acceptance.\n- Do not enable GitHub Actions, send external messages, perform hardware operations or publish changes without the applicable authorization.\n- Handoff states affected repositories, completed work, remaining work and actual evidence. Preserve another agent's changes; reconcile shared contracts before completing.\n\n## Limits of enforcement\n\nLocal hooks can be bypassed. Automated checks validate structure, references and selected executions; maintainers still review business meaning, assertion quality and new abstractions. CI policy is repository-specific: inspect the current workflow triggers and release runbook. Do not infer present CI or deployment state from a historical checklist, and do not enable broader triggers without authorization.\n"
+  "version": 2,
+  "digest": "6e7db90f1f7a0ca27783375cbcabcd472f2788b70305110e1512a24c64d2f62c",
+  "text": "# Development contract\n\nStatus: current. Owner: maintainers of the affected repositories.\n\nThis contract applies to people and coding agents. Repository AGENTS.md files contain a generated copy so a standalone checkout retains these obligations. CLAUDE.md points to AGENTS.md. Change this source and run `npm run quality:sync` from the ERP repository; do not edit generated sections.\n\n## Before changing code\n\n- Read AGENTS.md and the canonical documentation relevant to the change. Inspect the branch and working tree; preserve concurrent work.\n- Identify the owning service, affected business rules, APIs, SQL, authorization, compatibility and tests. Find an existing component or service before creating another.\n- Resolve disagreements between intended rules and current behavior explicitly. Neither an old document nor current code silently overrides a product decision.\n- Keep one active checklist for a cross-repository task. Small changes do not need a separate plan document.\n- When resuming in a new chat, read the documentation index and the current handoff section first, then only the relevant domain references and source. Do not ingest the full historical checklist or every Markdown file. Maintain the existing handoff with current state, next action, evidence and limits; do not create a competing per-chat summary.\n\n## Implementation\n\n- Keep business logic in its owning service. UI, verification blocks and hardware adapters must call the existing behavior rather than copy calculations.\n- PostgreSQL business access belongs to domain SQL functions, declared in versioned SQL files. TypeScript authenticates, validates transport contracts, calls typed routines and performs external I/O; it must not build table queries or duplicate persistent business calculations. Reuse existing routines and triggers. Preserve atomicity, tenant scope, revisions, idempotency and audit steps. Runtime SQL exceptions are explicit infrastructure or read-only external-source adapters, never a generic SQL escape hatch. Run the SQL-boundary check; existing migration debt may decrease but new inline SQL must not be added.\n- Reuse shadcn controls and existing layout primitives. Do not nest decorative cards in cards, dialogs, sheets or drawers, including equivalent div wrappers.\n- Keep global search discoverability current in the same change: added, renamed, moved or removed pages/actions must update their existing router handles, navigation permissions and EN/RO i18n keys. Reuse the router-derived search index; never maintain a duplicate hand-written action catalogue. Verify that the relevant page and action can be found, and that unauthorized actions remain hidden.\n- Enforce organization, location, actor and permissions on the server. Preserve transactions, idempotency, historical records and compatibility for stock, money and documents.\n- Deliver schema changes through reproducible migrations owned by the correct repository. Do not repair only the local database.\n- Update the canonical document when behavior changes. Index new documents; use an ADR only for a durable decision. Do not create per-turn FINAL, COMPLETE, SUMMARY or PROGRESS documents.\n- Add meaningful coverage for new behavior and a regression case for a bug. Do not mirror implementation details or add tests for a wording-only edit.\n- Do not weaken assertions, remove security checks or change expected behavior merely to make a test pass. Explain necessary dependency changes.\n- Never commit credentials, personal production data, production dumps or private keys. Use synthetic fixtures and redact artifacts.\n\n## UI/UX requirements\n\n- For interface work, read the shared UI/UX requirements (`.quality/ui-ux-conventions.md`) and the pinned Flawless UI/UX skill (`.agents/skills/flawless-ui-ux/SKILL.md`). Consult [Laws of UX](https://lawsofux.com/llms.txt) for the affected decisions. Select relevant references, not the whole library for every small edit. These obligations cover people and all agents, including standalone clones.\n- Identify the user's task and primary action, reuse the existing components, and apply the relevant principles to choices, grouping, targets, feedback and responsive behavior. Preserve shadcn/native primitives, EN/RO, authorization and business semantics. Heuristics are not permission to redesign unrelated pages or weaken validation.\n- Perform the skill's final pattern pass, operate the real user path and inspect relevant wide/narrow, keyboard/touch, loading, empty, error, success and overlay states. Record decisions, reused components, observations and limits in the existing checklist or structured receipt. Static checks and a build do not establish usability or accessibility compliance.\n- The pinned skill/license and generated requirements are checked by `quality:check`; update their canonical sources through ERP's `quality:sync`. Do not replace them with unreviewed latest downloads. Optional CLI inspection uses the pinned version documented in the requirements; it supplements, not replaces, interaction and visual review.\n\n## Verification and handoff\n\n- Inspect the final diff and generated contracts. Run `quality:check` and checks selected for the impact; broaden testing only for a new failure or unresolved risk.\n- For UI changes inspect the relevant loading, empty, error, success, open dialog and narrow-screen states in a browser. A build alone does not demonstrate usability.\n- Record the source fingerprint, commands, outcomes, skipped checks and reasons. Source changes invalidate earlier evidence.\n- If the user requests a manual trial first, write necessary tests and record their execution as deferred. Say implemented and ready for trial, not validated.\n- Distinguish implemented, automatically tested, manually inspected, hardware tested and legally reviewed. Mocks do not establish hardware or statutory acceptance.\n- Do not enable GitHub Actions, send external messages, perform hardware operations or publish changes without the applicable authorization.\n- Handoff states affected repositories, completed work, remaining work and actual evidence. Preserve another agent's changes; reconcile shared contracts before completing.\n\n## Limits of enforcement\n\nLocal hooks can be bypassed. Automated checks validate structure, references and selected executions; maintainers still review business meaning, assertion quality and new abstractions. CI policy is repository-specific: inspect the current workflow triggers and release runbook. Do not infer present CI or deployment state from a historical checklist, and do not enable broader triggers without authorization.\n",
+  "resources": [
+    {
+      "source": "docs/ui-ux-conventions.md",
+      "target": ".quality/ui-ux-conventions.md",
+      "sha256": "41dc80c8283ad94b85f3ecf6486debea8bd9240ce70cee1a4ca14b2849b84e9f"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/LICENSE",
+      "target": ".agents/skills/flawless-ui-ux/LICENSE",
+      "sha256": "978528a07ad66f243ad8c509ed8f9a4068cbad1912757c6d14e9086dbfbfd1d9"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/SKILL.md",
+      "target": ".agents/skills/flawless-ui-ux/SKILL.md",
+      "sha256": "e2b49885ab2b7e1b47281df463be6092bcf9bfebc4c95a81fb4d663025fe9cc9"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/agents/openai.yaml",
+      "target": ".agents/skills/flawless-ui-ux/agents/openai.yaml",
+      "sha256": "ef5ba4542c1a432a16c8b83b188ae1a25657c836b9ef930c209ba90764671420"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/assets/design-studies/collection.png",
+      "target": ".agents/skills/flawless-ui-ux/assets/design-studies/collection.png",
+      "sha256": "f4f213527740b4209e5d479e994916505914d17f9efbc58d5dad4b600927b197"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/assets/design-studies/reading.png",
+      "target": ".agents/skills/flawless-ui-ux/assets/design-studies/reading.png",
+      "sha256": "33c12214b26494678483a33bd28b761020e3bc682fc43de047e01e02990a8e8c"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/assets/design-studies/service.png",
+      "target": ".agents/skills/flawless-ui-ux/assets/design-studies/service.png",
+      "sha256": "8a1ef809e0aab52135aafa2ca50a7bdf53f70ea1c7848279bd78fcec7964a9a3"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/assets/design-studies/workspace.png",
+      "target": ".agents/skills/flawless-ui-ux/assets/design-studies/workspace.png",
+      "sha256": "582ff7086fdb8c9b23a6673a7271b1e5379a11e9328b19353b576dcf4f211f7d"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/anti-slop.md",
+      "target": ".agents/skills/flawless-ui-ux/references/anti-slop.md",
+      "sha256": "ac794e4b80deaf72b10fc698394a268d5193f0ab7aaa21ffb5aacd6ff72ba4e2"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/calibration.md",
+      "target": ".agents/skills/flawless-ui-ux/references/calibration.md",
+      "sha256": "eacc033c51fc6598a663842e61b44687b6f811d77063099a559d9db0101a95b2"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/craft.md",
+      "target": ".agents/skills/flawless-ui-ux/references/craft.md",
+      "sha256": "3bc12c1e875560a3ce4f8fabb3f8c8eb22a1a4b11409fbd072e53eb40029be42"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/design-studies.md",
+      "target": ".agents/skills/flawless-ui-ux/references/design-studies.md",
+      "sha256": "cba9929378dc74aee12ec847e107faec02f43f1890df2b6ac200a24164db5da2"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/direction.md",
+      "target": ".agents/skills/flawless-ui-ux/references/direction.md",
+      "sha256": "a470433ef0aeab8a7e763125db8204bae2a5313c39ec55a4d27fa75153668f21"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/inspection.md",
+      "target": ".agents/skills/flawless-ui-ux/references/inspection.md",
+      "sha256": "f537f9a07845bb82a4130e03691bba8cb25e9edb75ed88c4c4c50ed53299b105"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/interaction.md",
+      "target": ".agents/skills/flawless-ui-ux/references/interaction.md",
+      "sha256": "8917c3eee0e27cef4779b79fe9fd2032f7dd2cc8be5986a66bc8d0cc235d4e02"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/review.md",
+      "target": ".agents/skills/flawless-ui-ux/references/review.md",
+      "sha256": "c551ba771be9d7e5f8131f9d2c5742207f045b769cb72a27f9414efc8f5f21e3"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/references/structure.md",
+      "target": ".agents/skills/flawless-ui-ux/references/structure.md",
+      "sha256": "10a5b7e314b47dccd4ab471915913f2ee84de4fb2b46c6328543ad15c8c79bd4"
+    },
+    {
+      "source": ".agents/skills/flawless-ui-ux/upstream.json",
+      "target": ".agents/skills/flawless-ui-ux/upstream.json",
+      "sha256": "350c490fe93321f9880fe5eff6cba961b5b367dd2bcfa75d8f16bab576e437ec"
+    }
+  ]
 }

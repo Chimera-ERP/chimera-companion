@@ -2,6 +2,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
+import { match } from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -161,6 +162,44 @@ function checkSecret(file, source) {
   return [/-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----/, /\bgh[pousr]_[A-Za-z0-9]{30,}\b/, /\bgithub_pat_[A-Za-z0-9_]{40,}\b/].flatMap(pattern => pattern.test(source)?[`Possible secret in ${file}; values are suppressed`]:[]);
 }
 
+function referenceErrors(root, authority, policy) {
+  const errors = [], seen = new Set();
+
+  if (policy.version >= 2 && (!Array.isArray(policy.resources) || !policy.resources.length)) return ['Missing generated reference manifest'];
+
+  const validPath = value => {
+    try {
+      match(value, /^[\w./-]+$/);
+
+      return !path.isAbsolute(value) && !value.split('/').some(part => !part || part === '.' || part === '..');
+    } catch { return false; }
+  };
+
+  const matches = (base, relative, expected) => {
+    const absolute = path.join(base, relative);
+
+    if (!fs.existsSync(absolute) || fs.lstatSync(absolute).isSymbolicLink() || !fs.statSync(absolute).isFile()) return false;
+
+    if (!fs.realpathSync(absolute).startsWith(fs.realpathSync(base) + path.sep)) return false;
+
+    return hash(fs.readFileSync(absolute)) === expected;
+  };
+
+  for (const resource of policy.resources ?? []) {
+    if (!resource || !validPath(resource.source) || !validPath(resource.target) || !/^[a-f0-9]{64}$/.test(resource.sha256) || seen.has(resource.target)) {
+      errors.push('Invalid generated reference manifest'); continue;
+    }
+
+    seen.add(resource.target);
+
+    if (!matches(root, resource.target, resource.sha256)) errors.push('Generated reference missing or changed: ' + resource.target + '; run quality:sync');
+
+    if (fs.existsSync(path.join(authority, 'docs/development/agent-contract.md')) && !matches(authority, resource.source, resource.sha256)) errors.push('Canonical reference changed: ' + resource.source + '; run quality:sync');
+  }
+
+  return errors;
+}
+
 export function structuralCheck(root, config, policy, { changed = null } = {}) {
   const errors = [], warnings = [];
   const inventory = discoverTests(root, config);
@@ -171,6 +210,7 @@ export function structuralCheck(root, config, policy, { changed = null } = {}) {
   if (fs.readFileSync(path.join(root, 'AGENTS.md'), 'utf8') !== expectedAgent(config, policy)) errors.push('Generated AGENTS.md diverges; run quality:sync');
   const authority = path.resolve(root, config.authority ?? '../chimera');
   const canonicalPolicy = path.join(authority, 'docs/development/agent-contract.md');
+  errors.push(...referenceErrors(root, authority, policy));
 
   if (fs.existsSync(canonicalPolicy) && fs.readFileSync(canonicalPolicy, 'utf8') !== policy.text) errors.push('Shared contract differs from canonical source');
   const canonicalRuntime = path.join(authority, 'tools/quality/runtime.mjs');

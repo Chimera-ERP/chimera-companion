@@ -1,0 +1,72 @@
+{
+  "repository": "https://github.com/smokeeaasd/flawless-ui-ux",
+  "revision": "82d9355d346b0d701240ed046e5ef11c6d39e80e",
+  "license": "MIT",
+  "cliVersion": "1.0.0",
+  "files": [
+    {
+      "path": "LICENSE",
+      "sha256": "978528a07ad66f243ad8c509ed8f9a4068cbad1912757c6d14e9086dbfbfd1d9"
+    },
+    {
+      "path": "SKILL.md",
+      "sha256": "e2b49885ab2b7e1b47281df463be6092bcf9bfebc4c95a81fb4d663025fe9cc9"
+    },
+    {
+      "path": "agents/openai.yaml",
+      "sha256": "ef5ba4542c1a432a16c8b83b188ae1a25657c836b9ef930c209ba90764671420"
+    },
+    {
+      "path": "assets/design-studies/collection.png",
+      "sha256": "f4f213527740b4209e5d479e994916505914d17f9efbc58d5dad4b600927b197"
+    },
+    {
+      "path": "assets/design-studies/reading.png",
+      "sha256": "33c12214b26494678483a33bd28b761020e3bc682fc43de047e01e02990a8e8c"
+    },
+    {
+      "path": "assets/design-studies/service.png",
+      "sha256": "8a1ef809e0aab52135aafa2ca50a7bdf53f70ea1c7848279bd78fcec7964a9a3"
+    },
+    {
+      "path": "assets/design-studies/workspace.png",
+      "sha256": "582ff7086fdb8c9b23a6673a7271b1e5379a11e9328b19353b576dcf4f211f7d"
+    },
+    {
+      "path": "references/anti-slop.md",
+      "sha256": "ac794e4b80deaf72b10fc698394a268d5193f0ab7aaa21ffb5aacd6ff72ba4e2"
+    },
+    {
+      "path": "references/calibration.md",
+      "sha256": "eacc033c51fc6598a663842e61b44687b6f811d77063099a559d9db0101a95b2"
+    },
+    {
+      "path": "references/craft.md",
+      "sha256": "3bc12c1e875560a3ce4f8fabb3f8c8eb22a1a4b11409fbd072e53eb40029be42"
+    },
+    {
+      "path": "references/design-studies.md",
+      "sha256": "cba9929378dc74aee12ec847e107faec02f43f1890df2b6ac200a24164db5da2"
+    },
+    {
+      "path": "references/direction.md",
+      "sha256": "a470433ef0aeab8a7e763125db8204bae2a5313c39ec55a4d27fa75153668f21"
+    },
+    {
+      "path": "references/inspection.md",
+      "sha256": "f537f9a07845bb82a4130e03691bba8cb25e9edb75ed88c4c4c50ed53299b105"
+    },
+    {
+      "path": "references/interaction.md",
+      "sha256": "8917c3eee0e27cef4779b79fe9fd2032f7dd2cc8be5986a66bc8d0cc235d4e02"
+    },
+    {
+      "path": "references/review.md",
+      "sha256": "c551ba771be9d7e5f8131f9d2c5742207f045b769cb72a27f9414efc8f5f21e3"
+    },
+    {
+      "path": "references/structure.md",
+      "sha256": "10a5b7e314b47dccd4ab471915913f2ee84de4fb2b46c6328543ad15c8c79bd4"
+    }
+  ]
+}
