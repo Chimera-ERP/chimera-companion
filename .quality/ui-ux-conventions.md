@@ -49,12 +49,12 @@ and `PageBack` before the title for contextual return. Reuse the existing `list`
 `document`, `form` and `workspace` variants rather than adding another shell.
 Preserve list filters, selection and navigation context on return.
 
-- **List:** creation belongs in the header; the registry uses `PageSurface` and
+- **List:** creation belongs beside the page title; the registry uses `PageSurface` and
   the shared table/filter/pagination primitives below. Identifiers use
   `ListItemLink`; row actions remain independently reachable. A direct action
   must open the promised view, not an unrelated parent list. Loading, empty,
   filtered-no-results and error states retain useful controls.
-- **Document:** header contains identity, date, status and relevant actions;
+- **Document:** header contains identity, date, status and document commands;
   sections contain parties, location, notes, deadlines and totals. Reuse
   `DocumentConfirmAction` for consequential transitions; the page owns its
   permissions, mutation and feedback. Do not repeat totals or payment methods
@@ -75,10 +75,39 @@ Preserve list filters, selection and navigation context on return.
   children/portals; `PageSurfaceContext` is not permission to nest surfaces.
   Use full pages for sustained work and the established mobile drawer behavior.
 
+Page actions supplied through `PageHeader.action` render once beside the title, with
+the applicable automation, supporting-document and audit shortcuts. Section actions
+stay in their section; wizard navigation stays in the wizard footer.
+
+Use `RegistryTable.selection` / `RegistryTableView.selection` for operations on
+explicitly selected rows. The owner supplies the current count, original commands
+and a clear-selection handler. It owns selection across filters and pages. An
+empty selection, error state or lack of permitted commands leaves no floating
+bar and reserves no footer space. Keep filters, row actions and pagination in
+place. Ordinary form inputs and modal confirmation buttons are not bulk actions.
+
+The selection bar fits its contents on one row, centered at the bottom of the
+content area with safe-area/keyboard insets. Keep its translucent surface
+borderless, with a low-opacity tint, a 6px backdrop blur and a solid primary action.
+Use horizontal button padding and 16–26px between desktop controls to give the
+selection room. Desktop controls are 48px high in a 64px bar. On narrow screens
+use 44px controls, 14px spacing and a 58px bar.
+Use the opaque fallback for reduced transparency, high contrast and browsers
+without backdrop-filter. Secondary commands overflow in place; reuse the
+original permission gates, forms and confirmation components without cloning
+controls. The clear control also identifies the size of the selection.
+
 Use one clear primary action. Icon-only controls need accessible names, centered
 icons and reachable tooltips; essential meaning must not depend on hover. Preserve
 concise EN/RO copy and test long labels. Status needs a label or shape as well as
 color. A disabled action must expose the reason and recovery when not self-evident.
+ERP transient feedback uses the shared `components/ui/sonner` wrapper. Toasts
+appear at the top right with safe-area spacing and a light/dark liquid-glass surface.
+Reuse its icons, localized dismiss control and existing Sonner queue, actions and
+live region; do not introduce page-specific toast containers or notification styling.
+Keep an opaque fallback for unsupported blur, reduced transparency, increased
+contrast and forced colors. Reduced motion must not hide loading or result states.
+
 Destructive or consequential actions reuse the project's confirmation components;
 pending financial/stock work cannot be retried as a new operation.
 

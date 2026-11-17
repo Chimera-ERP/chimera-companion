@@ -6,7 +6,7 @@
     {
       "source": "docs/ui-ux-conventions.md",
       "target": ".quality/ui-ux-conventions.md",
-      "sha256": "41dc80c8283ad94b85f3ecf6486debea8bd9240ce70cee1a4ca14b2849b84e9f"
+      "sha256": "4c0ad44ae77b6a3551cee80c52c3dccd239a89722c2cb1d70f4acc2596243e1b"
     },
     {
       "source": ".agents/skills/flawless-ui-ux/LICENSE",
