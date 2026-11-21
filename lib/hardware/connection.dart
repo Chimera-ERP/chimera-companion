@@ -3,7 +3,49 @@ import 'contracts.dart';
 
 enum FiscalModel { tremolM20, tremolFp21, datecsDp25 }
 
-class LanEndpoint {
+sealed class FiscalEndpoint {
+  const FiscalEndpoint();
+
+  factory FiscalEndpoint.fromSettings(Map<String, dynamic> data) {
+    final transport = data['transport'] ?? 'lan';
+    if (transport == 'lan') {
+      return LanEndpoint(host: data['host'] as String, port: int.parse('${data['port']}'));
+    }
+    return FiscalSerialEndpoint(
+      transport: transport as String,
+      deviceId: data['deviceId'] as String,
+      baudRate: int.parse('${data['baudRate'] ?? 115200}'),
+      model: FiscalModel.values.byName(data['model'] as String),
+    );
+  }
+
+  String get key;
+  String get label;
+}
+
+class FiscalSerialEndpoint extends FiscalEndpoint {
+  FiscalSerialEndpoint({required this.transport, required this.deviceId, this.baudRate = 115200, this.model}) {
+    final valid = switch (transport) {
+      'bluetooth' => RegExp(r'^(?:[A-F0-9]{2}:){5}[A-F0-9]{2}$').hasMatch(deviceId),
+      'usb' => RegExp(r'^[a-f0-9]{64}$').hasMatch(deviceId),
+      _ => false,
+    };
+    if (!valid || ![9600, 19200, 38400, 57600, 115200].contains(baudRate)) {
+      throw ArgumentError('Identitate sau viteză serială invalidă.');
+    }
+  }
+
+  final String transport;
+  final String deviceId;
+  final int baudRate;
+  final FiscalModel? model;
+  @override
+  String get key => '$transport:$deviceId';
+  @override
+  String get label => transport == 'usb' ? 'USB · ${deviceId.substring(0, 12)}' : 'Bluetooth · $deviceId';
+}
+
+class LanEndpoint extends FiscalEndpoint {
   LanEndpoint({required this.host, required this.port}) {
     final ip = InternetAddress.tryParse(host);
     if (ip == null ||
@@ -24,6 +66,10 @@ class LanEndpoint {
   }
   final String host;
   final int port;
+  @override
+  String get key => '$host:$port';
+  @override
+  String get label => key;
   Map<String, Object> toJson() => {'host': host, 'port': port};
 }
 
@@ -31,7 +77,7 @@ class FiscalConnection {
   FiscalConnection({
     required this.id,
     required this.model,
-    required this.endpoint,
+    required FiscalEndpoint endpoint,
     required this.operatorNumber,
     required this.operatorPassword,
     required this.cashPaymentCode,
@@ -40,7 +86,7 @@ class FiscalConnection {
     this.tcpPassword = '',
     this.loyaltyPaymentCode,
     bool allowUnknownOperatorPassword = false,
-  }) {
+  }) : target = endpoint {
     if (id.trim().isEmpty ||
         operatorNumber < 1 ||
         operatorNumber > (model == FiscalModel.datecsDp25 ? 30 : 20) ||
@@ -69,7 +115,9 @@ class FiscalConnection {
   }
   final String id;
   final FiscalModel model;
-  final LanEndpoint endpoint;
+  final FiscalEndpoint target;
+  /// Only for the legacy network-only Datecs SDK and LAN callers.
+  LanEndpoint get endpoint => target as LanEndpoint;
   final int operatorNumber;
   final String operatorPassword;
   final String cashPaymentCode;

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chimera_companion/hardware/command_journal.dart';
 import 'package:chimera_companion/hardware/contracts.dart';
+import 'package:chimera_companion/hardware/connection.dart';
 import 'package:chimera_companion/hardware/runtime.dart';
 import 'package:chimera_companion/hardware/viva_adapter.dart';
 import 'package:chimera_companion/hardware/tremol_adapter.dart';
@@ -92,6 +93,25 @@ void main(){
     expect(result.reference,'0000002:0001');
     expect(peer.commands.skip(writes),[0x7c]);
     expect(peer.commands.where((c)=>c==0x30),hasLength(1));
+  });
+  test('FP21 reconciles its ten-byte serial only on the original register', () async {
+    final peer = JournalPeer()..serial = 'AB00000423'..loseCounterAfterClose = true;
+    Map<String, dynamic>? evidence;
+    final adapter = TremolAdapter(fixtures.connection(model: FiscalModel.tremolFp21),
+        sessions: (_) async => peer, checkpoint: (value) async { evidence = jsonDecode(jsonEncode(value)); });
+    expect((await adapter.printReceipt(fixtures.receipt())).outcome, CommandOutcome.unknown);
+    expect(evidence?['before']['serial'], 'AB00000423');
+    peer.loseCounterAfterClose = false;
+    for (final replacement in ['AB00000424', '1234567890']) {
+      peer.serial = replacement;
+      expect((await adapter.reconcileReceipt('cmd', evidence)).outcome, CommandOutcome.unknown);
+    }
+    expect(peer.commands.where((cmd) => cmd == 0x7c), isEmpty);
+    peer.serial = 'AB00000423';
+    final recovered = await adapter.reconcileReceipt('cmd', evidence);
+    expect(recovered.outcome, CommandOutcome.succeeded);
+    expect(recovered.fiscalIdentity['serialNumber'], peer.serial);
+    expect(peer.commands.where((cmd) => cmd == 0x30), hasLength(1));
   });
   test('Tremol does not infer emission from a counter, marker, or uncertain close alone',()async{
     final peer=JournalPeer();Map<String,dynamic>? evidence;

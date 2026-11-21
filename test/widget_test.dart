@@ -327,17 +327,19 @@ void main() {
         );
         await tester.pumpAndSettle();
         final host = find.widgetWithText(TextField, 'IP local ECR');
-        await tester.scrollUntilVisible(
-          host,
-          100,
-          scrollable: find.byType(Scrollable).first,
-        );
+        final form = find
+            .descendant(
+              of: find.byKey(const ValueKey('setup-form')),
+              matching: find.byType(Scrollable),
+            )
+            .first;
+        await tester.scrollUntilVisible(host, 100, scrollable: form);
         await tester.enterText(host, '192.168.1.172');
         await tester.testTextInput.receiveAction(TextInputAction.done);
         await tester.scrollUntilVisible(
           find.text('Operator și setări avansate'),
           120,
-          scrollable: find.byType(Scrollable).first,
+          scrollable: form,
         );
         await tester.tap(find.text('Operator și setări avansate'));
         await tester.pumpAndSettle();
@@ -361,11 +363,7 @@ void main() {
         );
         await tester.tap(find.byTooltip('Înapoi'));
         await tester.pumpAndSettle();
-        await tester.scrollUntilVisible(
-          host,
-          100,
-          scrollable: find.byType(Scrollable).first,
-        );
+        await tester.scrollUntilVisible(host, 100, scrollable: form);
         expect(
           tester.widget<TextField>(host).controller!.text,
           '192.168.1.172',

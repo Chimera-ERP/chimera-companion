@@ -64,6 +64,37 @@ void main() {
       throwsFormatException,
     );
   });
+  test(
+    'Tremol single-byte NAK and busy responses preserve their control code',
+    () {
+      for (final control in [0x15, 0x0e]) {
+        expect(TremolProtocol.frameLength([control]), 1);
+        expect(
+          () => TremolProtocol.decode([control], sequence: 0x22, command: 0x51),
+          throwsA(
+            isA<TremolCommandNotExecuted>().having(
+              (error) => error.control,
+              'control',
+              control,
+            ),
+          ),
+        );
+        expect(
+          () => TremolProtocol.decode(
+            [control, 10],
+            sequence: 0x22,
+            command: 0x51,
+          ),
+          throwsFormatException,
+        );
+      }
+      expect(
+        () => TremolProtocol.decode([0x06], sequence: 0x22, command: 0x51),
+        throwsFormatException,
+      );
+    },
+  );
+
   test('Tremol ACK errors are not successful receipts', () {
     final body = [0x20, 0x31, 0x30];
     final sum = body.fold<int>(0, (a, b) => a ^ b);

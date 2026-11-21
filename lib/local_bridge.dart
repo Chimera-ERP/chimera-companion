@@ -61,6 +61,17 @@ const companionOperations = [
   'rawEcr',
 ];
 
+extension on FiscalEndpoint {
+  String get rosterHost => switch (this) {
+    LanEndpoint(:final host) => host,
+    FiscalSerialEndpoint() => key,
+  };
+  int get rosterPort => switch (this) {
+    LanEndpoint(:final port) => port,
+    FiscalSerialEndpoint() => 0,
+  };
+}
+
 /// Monitoring and command dispatch have the same lifetime as the local server.
 class LocalBridge extends ChangeNotifier {
   LocalBridge({
@@ -75,18 +86,53 @@ class LocalBridge extends ChangeNotifier {
   }
   final FiscalDevice Function(Map<String, dynamic>) _deviceFactory;
   final PrinterSend printerSend;
-  bool _hasEcr(Map<String, dynamic>? settings) =>
-      settings?['host'] is String &&
-      (settings!['host'] as String).trim().isNotEmpty;
+  bool _hasEcr(Map<String, dynamic>? settings) {
+    final field = (settings?['transport'] ?? 'lan') == 'lan' ? 'host' : 'deviceId';
+    final identity = settings?[field];
+    return identity is String && identity.trim().isNotEmpty;
+  }
+
   FiscalDevice _configuredDevice(Map<String, dynamic> settings) {
     if (!_hasEcr(settings)) {
       throw StateError('Casa de marcat nu este configurată.');
     }
-    final host = settings['host'], port = int.tryParse('${settings['port']}');
-    final code = host is String && port != null
-        ? _security?.loyaltyPaymentCode(host, port)
-        : null;
-    return _deviceFactory({...settings, 'loyaltyPaymentCode': code});
+    final device = _deviceFactory({...settings, 'loyaltyPaymentCode': null});
+    final endpoint = device.connection.target;
+    final code = _security?.loyaltyPaymentCode(endpoint.rosterHost, endpoint.rosterPort);
+    return code == null ? device : _deviceFactory({...settings, 'loyaltyPaymentCode': code});
+  }
+
+  // Admissions predate serial support and are keyed by equipment and sale.
+  // Index distinct routes once per process so a changed connection cannot
+  // authorize payment for the same sale on a second register after restart.
+  Set<String>? _admissionDevices;
+  final _legacyAdmissionKeys = <String, Set<String>>{};
+  Future<bool> _admittedElsewhere(String sale, String device, String originalKey) async {
+    if (_admissionDevices == null) {
+      final devices = <String>{};
+      for (final entry in (await _storage.readAll()).entries) {
+        if (!entry.key.startsWith('sale_admission_')) continue;
+        final admission = jsonDecode(entry.value);
+        if (admission is! Map || admission['saleId'] is! String) {
+          throw const FormatException('Invalid stored sale admission');
+        }
+        final original = admission['equipmentId'];
+        if (original is String) {
+          devices.add(original);
+        } else {
+          (_legacyAdmissionKeys[admission['saleId']] ??= {}).add(entry.key);
+        }
+      }
+      _admissionDevices = devices;
+    }
+    final devices = _admissionDevices!..add(device);
+    if (_legacyAdmissionKeys[sale]?.any((key) => key != originalKey) == true) return true;
+    for (final previous in devices) {
+      if (previous == device) continue;
+      final key = 'sale_admission_${CommandJournal.fingerprint(previous, 'saleAuthorize', {'id': sale})}';
+      if (await _storage.containsKey(key: key)) return true;
+    }
+    return false;
   }
 
   final PaymentTerminalAdapter Function(Map<String, dynamic>)? paymentFactory;
@@ -304,9 +350,13 @@ class LocalBridge extends ChangeNotifier {
                 'Configurație indisponibilă; comanda nu a fost retrimisă.',
           };
         }
+        final device = _configuredDevice(settings);
+        if (grant['equipment'] != device.connection.target.key) {
+          return {'outcome': 'unknown', 'message': 'Recuperează comanda pe conexiunea fiscală originală.'};
+        }
         final recorded = await _journal!.lookup(
           id: grant['commandId'] as String,
-          deviceId: _configuredDevice(settings).id,
+          deviceId: device.id,
           operation: (grant['operations'] as List).single as String,
           payload: payload,
         );
@@ -570,8 +620,8 @@ class LocalBridge extends ChangeNotifier {
                 {
                   'kind': 'ecr',
                   'name': ecr.name,
-                  'host': ecr.connection.endpoint.host,
-                  'port': ecr.connection.endpoint.port,
+                  'host': ecr.connection.target.rosterHost,
+                  'port': ecr.connection.target.rosterPort,
                   'payment_catalog': settings['paymentCatalog'] ?? [],
                 },
               );
@@ -743,7 +793,7 @@ class LocalBridge extends ChangeNotifier {
             'state': 'error',
             'message': error is TremolLanPasswordRequired
                 ? error.toString()
-                : 'Casa de marcat este indisponibilă: poate fi oprită sau inaccesibilă. Verifică alimentarea, conexiunea LAN și configurarea.',
+                : 'Casa de marcat este indisponibilă: poate fi oprită sau inaccesibilă. Verifică alimentarea și conexiunea configurată.',
           };
         }
       }
@@ -1010,9 +1060,9 @@ class LocalBridge extends ChangeNotifier {
                 current['vivaHost'] as String? ?? '',
                 current['vivaPort'] as String? ?? '',
               )
-            : _deviceFactory(current).connection.endpoint;
+            : _configuredDevice(current).connection.target;
         if (expectedEndpoint != null &&
-            expectedEndpoint != '${endpoint.host}:${endpoint.port}') {
+            expectedEndpoint != endpoint.key) {
           return {
             'outcome': 'rejected',
             'message': 'Echipamentul ERP diferă de configurația locală.',
@@ -1021,8 +1071,8 @@ class LocalBridge extends ChangeNotifier {
         if (_security != null &&
             !_security!.ownsEquipment(
               paying ? 'payment' : 'ecr',
-              endpoint.host,
-              endpoint.port,
+              endpoint.rosterHost,
+              endpoint.rosterPort,
             )) {
           return {
             'outcome': 'rejected',
@@ -1064,6 +1114,7 @@ class LocalBridge extends ChangeNotifier {
         'ecrReady': ecr['state'] == 'ready' && !_executing,
         'capabilities': ecr['capabilities'],
         'paymentStartProofVersion': 1,
+        'receiptPreflightVersion': 1,
         'saleAdmissionLifecycleVersion': 1,
         'commandRecoveryVersion': 1,
         'offlineShiftCloseVersion': 1,
@@ -1398,6 +1449,27 @@ class LocalBridge extends ChangeNotifier {
                 'Există operații neconfirmate pe casă. Recuperează rezultatul înainte de o plată nouă.',
           };
         }
+        if (admission['receiptPreflightVersion'] != 1 ||
+            admission['paymentMethod'] != 'card' ||
+            admission['lifecycleVersion'] != 1) {
+          throw const FormatException(
+            'Validate the original receipt before starting a payment',
+          );
+        }
+        if (admission['phase'] == 'admitted') {
+          final source = _admissionReceipt(payload);
+          if (saleFactsHash(source) != admission['receiptHash']) {
+            throw const FormatException(
+              'Payment does not match the validated receipt',
+            );
+          }
+          final status = await device.readStatus();
+          if (!status.ready) {
+            return {'outcome': 'rejected', 'message': status.description};
+          }
+          final draft = await _receiptDraft(payload['saleId'], source, device);
+          _verifyReceiptConfiguration(device, draft, admission);
+        }
         final state = SaleLifecycle.restore(admission).beginPayment(
           commandId: id,
           companion: payload['paymentCompanion'],
@@ -1444,9 +1516,17 @@ class LocalBridge extends ChangeNotifier {
             'message': 'Autorizarea operatorului a expirat.',
           };
         }
-        final facts = saleFacts(
-          Map<String, dynamic>.from(jsonDecode(payload['receiptJson'])),
-        );
+        final source = _admissionReceipt(payload);
+        final facts = saleFacts(source);
+        final preflightRequested = payload['receiptPreflightVersion'] == 1;
+        if (facts['paymentMethod'] == 'card' &&
+            (!preflightRequested || payload['lifecycleVersion'] != 1)) {
+          return {
+            'outcome': 'rejected',
+            'message':
+                'Actualizează POS pentru validarea bonului înainte de încasare.',
+          };
+        }
         if (facts['documentMode'] == 'nonfiscal' &&
             (payload['checkoutPolicy'] is! Map ||
                 payload['checkoutPolicy']['allow_nonfiscal_sales'] != true)) {
@@ -1457,9 +1537,6 @@ class LocalBridge extends ChangeNotifier {
         }
         if (facts['settlementVersion'] == 2 &&
             (facts['payments'] as List).any((p) => p['method'] == 'loyalty')) {
-          final source = Map<String, dynamic>.from(
-            jsonDecode(payload['receiptJson']),
-          );
           if (source['fidelityAuthorization'] is! String) {
             throw const FormatException('Customer coins approval required');
           }
@@ -1472,6 +1549,9 @@ class LocalBridge extends ChangeNotifier {
         final hash = saleFactsHash(facts);
         final admissionKey =
             'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': id})}';
+        if (await _admittedElsewhere(id, device.id, admissionKey)) {
+          return {'outcome': 'rejected', 'message': 'Vânzarea are deja o autorizare pe altă conexiune fiscală. Revino la conexiunea originală pentru recuperare.'};
+        }
         final existing = await _read(admissionKey);
         if (existing != null) {
           if (existing['lifecycleVersion'] == 1 &&
@@ -1495,11 +1575,25 @@ class LocalBridge extends ChangeNotifier {
               'message': 'Autorizarea vânzării a expirat.',
             };
           }
-          return {
-            'outcome': 'succeeded',
-            'saleAdmission': existing,
-            'message': 'Vânzare autorizată anterior.',
-          };
+          if (!preflightRequested ||
+              (existing['receiptPreflightVersion'] == 1 &&
+                  existing['phase'] != 'admitted')) {
+            return {
+              'outcome': 'succeeded',
+              'saleAdmission': existing,
+              'message': 'Vânzare autorizată anterior.',
+            };
+          }
+          // A versioned, still-admitted sale has never authorized a terminal.
+          // Legacy or possibly paid sales retain their original recovery path.
+          if (existing['phase'] != 'admitted' ||
+              existing['lifecycleVersion'] != 1) {
+            return {
+              'outcome': 'rejected',
+              'message':
+                  'Recuperează vânzarea existentă înainte de o nouă încasare.',
+            };
+          }
         }
         if (await journal.containsCommandId(id)) {
           return {
@@ -1544,27 +1638,55 @@ class LocalBridge extends ChangeNotifier {
             'fiscalPolicy': decision,
           };
         }
-        final admission = {
-          'org': _security?.org,
-          'location': locationId,
-          'saleId': id,
-          'receiptHash': hash,
-          'amountMinor': facts['paymentMethod'] == 'card'
-              ? receiptCardAmount(facts)
-              : facts['totalMinor'],
-          'currency': facts['currency'],
-          'operatorId': payload['operatorId'],
-          'posId': payload['posId'],
-          'receiptCompanion': companionId,
-          'startedAt': now.toIso8601String(),
-          'expiresAt': payload['authorizationExpires'],
-        };
+        final FiscalReceiptDraft draft;
+        try {
+          draft = await _receiptDraft(id, source, device);
+          if (existing?['receiptPreflightVersion'] == 1) {
+            _verifyReceiptConfiguration(device, draft, existing!);
+          } else {
+            device.validateReceipt(draft);
+          }
+        } on ArgumentError catch (error) {
+          return {
+            'outcome': 'rejected',
+            'message': 'Casa nu poate emite acest bon. ${error.message}',
+          };
+        }
+        final admission =
+            existing ??
+            {
+              'org': _security?.org,
+              'location': locationId,
+              'saleId': id,
+              'receiptHash': hash,
+              'amountMinor': facts['paymentMethod'] == 'card'
+                  ? receiptCardAmount(facts)
+                  : facts['totalMinor'],
+              'currency': facts['currency'],
+              'operatorId': payload['operatorId'],
+              'posId': payload['posId'],
+              'receiptCompanion': companionId,
+              'startedAt': now.toIso8601String(),
+              'expiresAt': payload['authorizationExpires'],
+            };
         admission['equipmentId'] = device.id;
         admission['paymentMethod'] = facts['paymentMethod'];
-        final issued = SaleLifecycle.issue(
-          admission,
-          requestedVersion: payload['lifecycleVersion'],
-        );
+        if (preflightRequested) {
+          admission['receiptPreflightVersion'] = 1;
+          admission['receiptConfigurationHash'] = _receiptConfigurationHash(
+            device,
+            draft,
+          );
+          if (draft.claimToken != null) {
+            admission['claimToken'] = draft.claimToken;
+          }
+        }
+        final issued =
+            existing ??
+            SaleLifecycle.issue(
+              admission,
+              requestedVersion: payload['lifecycleVersion'],
+            );
         await _write(admissionKey, issued);
         return {
           'outcome': 'succeeded',
@@ -1739,7 +1861,10 @@ class LocalBridge extends ChangeNotifier {
               'sale_admission_${CommandJournal.fingerprint(device!.id, 'saleAuthorize', {'id': payload['saleId']})}';
           final stored = await _read(admissionKey);
           if (stored == null ||
-              stored['receiptHash'] != receiptAdmission['receiptHash']) {
+              stored['receiptHash'] != receiptAdmission['receiptHash'] ||
+              (stored['receiptPreflightVersion'] == 1 &&
+                  stored['receiptConfigurationHash'] !=
+                      receiptAdmission['receiptConfigurationHash'])) {
             throw const FormatException('Sale admission missing or mismatched');
           }
           SaleLifecycle.restore(stored).requireReceiptState(
@@ -1755,7 +1880,31 @@ class LocalBridge extends ChangeNotifier {
                 'Numele operatorului ECR nu corespunde operatorului POS. Reautentifică operatorul și rezolvă sincronizarea înainte de bon.',
           };
         }
-        receipt = await _receipt(id, payload, settings, journal);
+        final reference = await _paymentReference(
+          id,
+          payload,
+          settings,
+          journal,
+        );
+        if (receiptAdmission['receiptPreflightVersion'] == 1) {
+          final status = await device.readStatus();
+          if (!status.ready) {
+            return {'outcome': 'rejected', 'message': status.description};
+          }
+        }
+        final draft = await _receiptDraft(
+          id,
+          payload,
+          device,
+          requireUniqueVat: receiptAdmission['receiptPreflightVersion'] == 1,
+        );
+        if (receiptAdmission['receiptPreflightVersion'] == 1) {
+          _verifyReceiptConfiguration(device, draft, receiptAdmission);
+        }
+        receipt = FiscalReceipt.fromDraft(
+          draft,
+          confirmedPaymentReference: reference,
+        );
       }
       if (operation == 'paymentTest' &&
           (payload['amountMinor'] != 500 ||
@@ -1885,19 +2034,29 @@ class LocalBridge extends ChangeNotifier {
                     payload,
                     fiscalReceipt: false,
                   );
-                  if (admission['lifecycleVersion'] == 1) {
-                    if (payload['paymentAuthorization'] is! Map) {
-                      throw const FormatException(
-                        'Payment-start authorization required',
-                      );
-                    }
-                    _security!.verifyPaymentStart(
-                      Map<String, dynamic>.from(
-                        payload['paymentAuthorization'],
-                      ),
-                      payload,
-                      id,
-                      admission['receiptHash'],
+                  if (admission['receiptPreflightVersion'] != 1 ||
+                      admission['paymentMethod'] != 'card' ||
+                      admission['lifecycleVersion'] != 1) {
+                    throw const FormatException(
+                      'Receipt preflight required before a new payment',
+                    );
+                  }
+                  if (payload['paymentAuthorization'] is! Map) {
+                    throw const FormatException(
+                      'Payment-start authorization required',
+                    );
+                  }
+                  final started = _security!.verifyPaymentStart(
+                    Map<String, dynamic>.from(payload['paymentAuthorization']),
+                    payload,
+                    id,
+                    admission['receiptHash'],
+                  );
+                  if (started['receiptPreflightVersion'] != 1 ||
+                      started['receiptConfigurationHash'] !=
+                          admission['receiptConfigurationHash']) {
+                    throw const FormatException(
+                      'Payment-start proof differs from the validated receipt',
                     );
                   }
                 }
@@ -1993,7 +2152,43 @@ class LocalBridge extends ChangeNotifier {
     }
   }
 
-  Future<FiscalReceipt> _receipt(
+  Map<String, dynamic> _admissionReceipt(Map<String, dynamic> payload) {
+    final encoded = payload['receiptJson'];
+    if (encoded is! String || encoded.length > 100000) {
+      throw const FormatException('Original receipt required for preflight');
+    }
+    final source = jsonDecode(encoded);
+    if (source is! Map<String, dynamic>) {
+      throw const FormatException('Invalid receipt draft');
+    }
+    return source;
+  }
+
+  String _receiptConfigurationHash(
+    FiscalDevice device,
+    FiscalReceiptDraft draft,
+  ) => CommandJournal.fingerprint(
+    device.id,
+    'receiptPreflight',
+    device.receiptConfiguration(draft),
+  );
+
+  void _verifyReceiptConfiguration(
+    FiscalDevice device,
+    FiscalReceiptDraft draft,
+    Map<String, dynamic> admission,
+  ) {
+    device.validateReceipt(draft);
+    if (admission['claimToken'] != draft.claimToken ||
+        admission['receiptConfigurationHash'] !=
+            _receiptConfigurationHash(device, draft)) {
+      throw const FormatException(
+        'Receipt features or register configuration changed after preflight',
+      );
+    }
+  }
+
+  Future<String?> _paymentReference(
     String id,
     Map<String, dynamic> payload,
     Map<String, dynamic> settings,
@@ -2044,12 +2239,36 @@ class LocalBridge extends ChangeNotifier {
         reference = result!.reference;
       }
     }
+    return reference;
+  }
+
+  Future<FiscalReceiptDraft> _receiptDraft(
+    String id,
+    Map<String, dynamic> payload,
+    FiscalDevice device, {
+    bool requireUniqueVat = true,
+  }) async {
+    if (payload['settlementVersion'] != 2 &&
+        (payload['documentMode'] ?? 'fiscal') != 'fiscal') {
+      throw const FormatException('Invalid receipt document mode');
+    }
     final sourceLines = payload['lines'] as List;
     Map<String, double>? vatRates;
     if (payload['documentMode'] != 'nonfiscal' &&
         sourceLines.any((line) => line is Map && line['vatRate'] is num)) {
-      vatRates = await _configuredDevice(settings).readVatRates();
+      vatRates = await device.readVatRates();
     }
+    String groupFor(num rate) {
+      final matches = vatRates!.entries.where(
+        (entry) => (entry.value - rate).abs() < 0.001,
+      );
+      if (matches.isEmpty) throw ArgumentError('VAT rate absent from ECR');
+      if (requireUniqueVat && matches.length != 1) {
+        throw ArgumentError('Ambiguous VAT rate on ECR');
+      }
+      return matches.first.key;
+    }
+
     final lines = sourceLines.map((line) {
       if (line is! Map ||
           line['name'] is! String ||
@@ -2067,19 +2286,11 @@ class LocalBridge extends ChangeNotifier {
         vatGroup: payload['documentMode'] == 'nonfiscal'
             ? 'nonfiscal'
             : line['vatRate'] is num
-            ? (vatRates!.entries
-                      .where(
-                        (entry) =>
-                            (entry.value - (line['vatRate'] as num)).abs() <
-                            0.001,
-                      )
-                      .firstOrNull
-                      ?.key ??
-                  (throw ArgumentError('VAT rate absent from ECR')))
+            ? groupFor(line['vatRate'] as num)
             : line['vatGroup'] as String,
       );
     }).toList();
-    return FiscalReceipt(
+    return FiscalReceiptDraft(
       commandId: id,
       currency: 'RON',
       lines: lines,
@@ -2087,7 +2298,6 @@ class LocalBridge extends ChangeNotifier {
       paymentMethod: FiscalPaymentMethod.values.byName(
         payload['paymentMethod'] as String,
       ),
-      confirmedPaymentReference: reference,
       cui: payload['cui'] as String?,
       claimToken: payload['claimToken'] as String?,
       documentMode: payload['documentMode'] as String? ?? 'fiscal',

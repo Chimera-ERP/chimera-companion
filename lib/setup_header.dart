@@ -48,7 +48,10 @@ class SetupFrame extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 720),
         child: child,
       );
-      final wide = constraints.maxWidth >= 1100 && constraints.maxHeight >= 500;
+      final wide =
+          steps.length > 1 &&
+          constraints.maxWidth >= 1100 &&
+          constraints.maxHeight >= 500;
       // Keep the form at the same keyed position in the widget tree when the
       // Android keyboard changes the available height. Reparenting it recreates
       // TextFields, drops focus and immediately dismisses the keyboard.
@@ -134,7 +137,7 @@ class SetupHeader extends StatelessWidget {
             const [
               'Introdu PIN-ul generat pentru locația ta.',
               'Conexiunea cu POS-ul se securizează automat.',
-              'Caută în rețea sau introdu adresa. Poți configura mai târziu.',
+              'Alege modelul și conexiunea casei.',
               'Pe acest telefon sau pe alt dispozitiv. Pas opțional.',
               'Verifică apoi conexiunea reală din browserul POS.',
               'Unde va lucra acest Companion?',

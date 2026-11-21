@@ -66,28 +66,36 @@ class CashMovementRequest {
   final String reason;
 }
 
-class FiscalReceipt {
-  FiscalReceipt({
+class FiscalReceiptDraft {
+  FiscalReceiptDraft({
     required this.commandId,
     required this.currency,
     required List<FiscalLine> lines,
     required this.totalMinor,
     required this.paymentMethod,
-    this.confirmedPaymentReference,
     this.cui,
     this.claimToken,
-    this.documentMode='fiscal',
+    this.documentMode = 'fiscal',
     List<ReceiptPayment>? payments,
-  }) : lines = List.unmodifiable(lines),payments=List.unmodifiable(payments??[ReceiptPayment(method:paymentMethod,amountMinor:totalMinor)]) {
+  }) : lines = List.unmodifiable(lines),
+       payments = List.unmodifiable(
+         payments ??
+             [ReceiptPayment(method: paymentMethod, amountMinor: totalMinor)],
+       ) {
     if (commandId.trim().isEmpty ||
         currency != 'RON' ||
         lines.isEmpty ||
         totalMinor <= 0 ||
-        totalMinor > 99999999 || !['fiscal','nonfiscal'].contains(documentMode) || this.payments.isEmpty || this.payments.fold<int>(0,(sum,p)=>sum+p.amountMinor)!=totalMinor || this.payments.map((p)=>p.method).toSet().length!=this.payments.length ||
-        (claimToken != null && !RegExp(r'^[A-Za-z0-9]{12}$').hasMatch(claimToken!)) ||
+        totalMinor > 99999999 ||
+        !['fiscal', 'nonfiscal'].contains(documentMode) ||
+        this.payments.isEmpty ||
+        this.payments.fold<int>(0, (sum, p) => sum + p.amountMinor) !=
+            totalMinor ||
+        this.payments.map((p) => p.method).toSet().length !=
+            this.payments.length ||
+        (claimToken != null &&
+            !RegExp(r'^[A-Za-z0-9]{12}$').hasMatch(claimToken!)) ||
         (cui != null && !RegExp(r'^(RO)?[1-9][0-9]{1,9}$').hasMatch(cui!)) ||
-        (paymentMethod == FiscalPaymentMethod.card &&
-            (confirmedPaymentReference?.trim().isEmpty ?? true)) ||
         lines.fold<int>(0, (sum, line) => sum + line.grossTotalMinor) !=
             totalMinor) {
       throw ArgumentError(
@@ -100,21 +108,62 @@ class FiscalReceipt {
   final List<FiscalLine> lines;
   final int totalMinor;
   final FiscalPaymentMethod paymentMethod;
-  final String? confirmedPaymentReference;
   final String? cui;
   final String? claimToken;
   final String documentMode;
   final List<ReceiptPayment> payments;
+}
+
+/// Only this type can be dispatched to a printer. Admission uses the unpaid draft.
+class FiscalReceipt extends FiscalReceiptDraft {
+  FiscalReceipt({
+    required super.commandId,
+    required super.currency,
+    required super.lines,
+    required super.totalMinor,
+    required super.paymentMethod,
+    super.payments,
+    super.cui,
+    super.claimToken,
+    super.documentMode,
+    this.confirmedPaymentReference,
+  }) {
+    if ((paymentMethod == FiscalPaymentMethod.card ||
+            payments.any(
+              (tender) => tender.method == FiscalPaymentMethod.card,
+            )) &&
+        (confirmedPaymentReference?.trim().isEmpty ?? true)) {
+      throw ArgumentError('Confirmed card payment required');
+    }
+  }
+
+  FiscalReceipt.fromDraft(
+    FiscalReceiptDraft draft, {
+    String? confirmedPaymentReference,
+  }) : this(
+         commandId: draft.commandId,
+         currency: draft.currency,
+         lines: draft.lines,
+         totalMinor: draft.totalMinor,
+         paymentMethod: draft.paymentMethod,
+         payments: draft.payments,
+         cui: draft.cui,
+         claimToken: draft.claimToken,
+         documentMode: draft.documentMode,
+         confirmedPaymentReference: confirmedPaymentReference,
+       );
+
+  final String? confirmedPaymentReference;
   Map<String, Object?> toJson() => {
     'commandId': commandId,
     'currency': currency,
     'totalMinor': totalMinor,
     'paymentMethod': paymentMethod.name,
     'confirmedPaymentReference': confirmedPaymentReference,
-    if(cui!=null) 'cui':cui,
-    if(claimToken!=null) 'claimToken':claimToken,
-    'documentMode':documentMode,
-    'payments':payments.map((p)=>p.toJson()).toList(),
+    if (cui != null) 'cui': cui,
+    if (claimToken != null) 'claimToken': claimToken,
+    'documentMode': documentMode,
+    'payments': payments.map((p) => p.toJson()).toList(),
     'lines': lines.map((line) => line.toJson()).toList(),
   };
 }

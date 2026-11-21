@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chimera_companion/hardware/fiscal_device.dart';
+import 'package:chimera_companion/hardware/datecs_device_client.dart';
 import 'package:chimera_companion/hardware/connection.dart';
 import 'package:chimera_companion/hardware/contracts.dart';
 import 'package:chimera_companion/hardware/datecs_gateway_protocol.dart';
@@ -94,6 +95,79 @@ void main() {
     cashPaymentCode: '0',
     cardPaymentCode: '1',
   );
+  test(
+    'card drafts validate per register before they have payment evidence',
+    () {
+      FiscalReceiptDraft sale(String name, {List<ReceiptPayment>? payments}) =>
+          FiscalReceiptDraft(
+            commandId: 'test-card',
+            currency: 'RON',
+            totalMinor: 1000,
+            paymentMethod: FiscalPaymentMethod.card,
+            payments: payments,
+            lines: [
+              FiscalLine(
+                name: name,
+                quantityDecimal: '1',
+                unitPriceMinor: 1000,
+                grossTotalMinor: 1000,
+                vatGroup: 'A',
+              ),
+            ],
+          );
+      final legacy = FiscalConnection(
+        id: 'legacy',
+        model: FiscalModel.datecsDp25,
+        endpoint: connection().endpoint,
+        operatorNumber: 1,
+        operatorPassword: '1234',
+        cashPaymentCode: 'P',
+        cardPaymentCode: 'D',
+      );
+      final registers = [
+        FiscalDevice(fixtures.connection(model: FiscalModel.tremolM20)),
+        FiscalDevice(fixtures.connection(model: FiscalModel.tremolFp21)),
+        FiscalDevice(connection(), profile: DatecsProfile.asciiMx),
+        FiscalDevice(legacy, profile: DatecsProfile.legacyRou),
+      ];
+      final draft = sale('Test');
+      for (final device in registers) {
+        device.validateReceipt(draft);
+        expect(
+          () => device.validateReceipt(sale('X' * 31)),
+          throwsArgumentError,
+        );
+        expect(
+          () => device.validateReceipt(
+            sale(
+              'Test',
+              payments: [
+                ReceiptPayment(
+                  method: FiscalPaymentMethod.card,
+                  amountMinor: 900,
+                ),
+                ReceiptPayment(
+                  method: FiscalPaymentMethod.loyalty,
+                  amountMinor: 100,
+                ),
+              ],
+            ),
+          ),
+          throwsArgumentError,
+        );
+      }
+      expect(registers.last.capabilities, isNot(contains('settlementV2')));
+      expect(() => FiscalReceipt.fromDraft(draft), throwsArgumentError);
+      expect(
+        FiscalReceipt.fromDraft(
+          draft,
+          confirmedPaymentReference: 'test-approval',
+        ).totalMinor,
+        1000,
+      );
+    },
+  );
+
   test(
     'Datecs MX validates subtotal/payment and returns the closed receipt',
     () async {

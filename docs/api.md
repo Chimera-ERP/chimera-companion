@@ -544,6 +544,14 @@ Fiscal Datecs MX framing is fixture-tested, not yet fiscally qualified on the
 physical Romanian unit. Full checkout, refund/reconciliation workflows, iOS and
 ERP user-initiated command screens remain outside this increment.
 
+## Fiscal register connections
+
+Android's selected ECR is a LAN address, a USB register identified by its hardware serial, or a paired Bluetooth Classic register. The USB rate is configured on the Android host. For Datecs, automatic selection on USB or Bluetooth uses the MX protocol. Explicit selection of the Romanian ROU profile routes the serial connection through the native Android SDK. Both local transports use the regular fiscal adapters and the same signed status, checkout, reconciliation, drawer and report operations supported by the selected model. USB reattachment can require a new foreground Android grant. Bluetooth connects to the selected paired address. A failed command has no automatic fallback to another transport.
+
+FP21's local setup can read radio capabilities and state on its verified USB session. The enable button is available when the register reports its radio disabled. It sends Tremol `P;B;S;1` once and reads `R;B;S` for confirmation. Pairing continues in Android settings. This device-level configuration is available from local setup and is outside the signed remote checkout API.
+
+Equipment registration uses `kind: "ecr"`. Existing LAN registrations carry their IPv4 address and TCP port. USB and Bluetooth carry `usb:<64 lowercase hex>` or `bluetooth:<uppercase MAC>` in `host` with `port: 0`. The ERP administrator can use the address copied from the Companion setup. When changing transport on an existing ECR, send the current `previous_host` and `previous_port` to keep its equipment ID. An active fiscal workflow may require recovery on the original endpoint before switching.
+
 ## Versioned checkout lifecycle (0.1.14+16)
 
 These are vendor-neutral local `/v1/commands` operations. The ERP-signed pairing
@@ -553,15 +561,15 @@ policies do not override verified claims. Model-specific writes stay in adapters
 
 | Operation | Business payload | Signed result |
 | --- | --- | --- |
-| `saleAuthorize` | `saleId`, `receiptJson`, optional `lifecycleVersion: 1` | `saleAdmission` |
-| `salePaymentStart` | `saleId`, `amountMinor`, `currency`, `paymentCompanion` | `paymentAdmission` binding the command ID and terminal |
+| `saleAuthorize` | `saleId`, `receiptJson`, `lifecycleVersion: 1` and `receiptPreflightVersion: 1` for card | `saleAdmission` |
+| `salePaymentStart` | `saleId`, `amountMinor`, `currency`, `paymentCompanion`, original `receiptJson` on first start | `paymentAdmission` binding the command ID and terminal |
 | `saleExternalPaymentConfirm` | `saleId`, `amountMinor`, `currency`, `confirmed: true` | persisted `external_confirmed` admission |
 | `saleAbandon` | `saleId` | persisted `abandoned` admission, only before payment |
 | `salePaymentReject` | `saleId`, `paymentRejectionProof` | persisted abandonment after verified terminal refusal |
 
-`status.saleAdmissionLifecycleVersion` advertises negotiation support. Existing
-admissions are never upgraded or reinterpreted. Version 1 stores intent before
-returning proof. An integrated terminal requires both `saleAuthorization` and
+`status.receiptPreflightVersion: 1` and `saleAdmissionLifecycleVersion: 1` are required for new card collection. POS includes the complete `receiptJson` and requested `receiptPreflightVersion: 1` in `saleAuthorize`, including a receipt claim token when configured. Companion validates the draft against the detected register and signs its configuration fingerprint. On the first `salePaymentStart`, send the original `receiptJson` again. Companion checks the sale identity, reads the register and verifies the fingerprint before issuing payment authorization. Printing still requires actual payment evidence.
+
+Tremol M20/FP21 use the configured VAT slots. Romanian Datecs MX uses read-only command 50. The legacy Romanian Datecs SDK reads enabled VAT slots with command 83. An absent or ambiguous rate, unsupported tender or unrepresentable line prevents admission. Old cash callers can keep the existing wire format. A still-unpaid versioned admission can be validated under its original sale ID. A possibly dispatched payment continues through recovery under its original command ID and journal. Version 1 stores intent before returning proof. An integrated terminal requires both `saleAuthorization` and
 `paymentAuthorization`; the original ECR signature binds sale, actor/POS,
 amount/currency, fiscal facts, terminal and original payment command. Payment
 session IDs must be UUIDs for Viva; persist them before dispatch and never replace

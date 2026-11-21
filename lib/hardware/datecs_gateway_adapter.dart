@@ -2,11 +2,12 @@ import 'connection.dart';
 import 'contracts.dart';
 import 'datecs_gateway_protocol.dart';
 import 'tcp_transport.dart';
+import 'fiscal_byte_session.dart';
 
 class DatecsGatewayAdapter {
   DatecsGatewayAdapter(this.endpoint, {SessionFactory? sessions})
-    : _sessions = sessions ?? TcpByteSession.connect;
-  final LanEndpoint endpoint;
+    : _sessions = sessions ?? FiscalByteSession.connect;
+  final FiscalEndpoint endpoint;
   final SessionFactory _sessions;
   bool _busy = false;
 
@@ -43,7 +44,7 @@ class DatecsGatewayAdapter {
       ]) {
         dispatched = true;
         final sequence = DatecsGatewayProtocol.nextSequence(
-          '${endpoint.host}:${endpoint.port}',
+          endpoint.key,
         );
         DatecsGatewayProtocol.decode(
           await session.exchange(

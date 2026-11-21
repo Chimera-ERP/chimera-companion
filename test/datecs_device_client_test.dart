@@ -11,6 +11,7 @@ class Peer implements ByteSession {
   final requests = <List<int>>[];
   bool loseX = false;
   String state = '0';
+  String vatResponse = '0\t37\t21.00\t11.00\t0.00\t100.00\t100.01\t100.02\t100.02\t20-11-26 00:12:23\t';
   @override
   Future<List<int>> exchange(
     List<int> request,
@@ -21,7 +22,11 @@ class Peer implements ByteSession {
         .sublist(6, 10)
         .fold<int>(0, (a, b) => (a << 4) + b - 0x30);
     if (command == 69 && loseX) throw TimeoutException('lost');
-    final payload = command == 76 ? '0\t$state\t517\t0\t0.00\t0.00\t' : '0\t';
+    final payload = switch (command) {
+      76 => '0\t$state\t517\t0\t0.00\t0.00\t',
+      50 => vatResponse,
+      _ => '0\t',
+    };
     final data = [
       request[5],
       ...request.sublist(6, 10),
@@ -60,6 +65,33 @@ void main() {
     );
   });
   final endpoint = LanEndpoint(host: '192.168.1.144', port: 3999);
+  test(
+    'RO MX reads configured VAT percentages and excludes non-percentage categories',
+    () async {
+      final peer = Peer();
+      final client = DatecsDeviceClient(endpoint, sessions: (_) async => peer);
+      expect(await client.readMxVatRates(), {'A': 21, 'B': 11, 'C': 0});
+      final frame = peer.requests.single;
+      expect(frame, DatecsGatewayProtocol.encode(50, '', sequence: frame[5]));
+    },
+  );
+  test(
+    'RO MX refuses incomplete VAT data and unknown rate categories',
+    () async {
+      final peer = Peer();
+      final client = DatecsDeviceClient(endpoint, sessions: (_) async => peer);
+      final valid = peer.vatResponse;
+      for (final reply in [
+        '0\t37\t',
+        valid.replaceFirst('100.02', '100.03'),
+        valid.replaceFirst('21.00', 'NaN'),
+      ]) {
+        peer.vatResponse = reply;
+        await expectLater(client.readMxVatRates(), throwsFormatException);
+      }
+    },
+  );
+
   test('auto detects MX without calling legacy SDK; X uses X TAB', () async {
     final peer = Peer();
     final client = DatecsDeviceClient(

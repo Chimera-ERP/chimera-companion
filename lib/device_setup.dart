@@ -3,7 +3,13 @@ import 'console/console_service.dart';
 import 'console/console_page.dart';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'fp21_usb_dialog.dart';
+import 'fiscal_serial_picker.dart';
+import 'fp21_bluetooth_dialog.dart';
+import 'hardware/fiscal_serial.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 import 'debug_panel.dart';
@@ -34,12 +40,18 @@ class DeviceSetupPage extends StatefulWidget {
     super.key,
     this.onCompleted,
     this.initialStep = 0,
+    this.editRegister = false,
+    this.beforeEnrollment = false,
     this.scales,
     this.console,
     this.enrollmentService = const SecureEnrollmentService(),
-  }) : assert(initialStep >= 0 && initialStep <= 4);
+  }) : assert(initialStep >= 0 && initialStep <= 4),
+       assert(!editRegister || initialStep == 2),
+       assert(!beforeEnrollment || editRegister);
   final VoidCallback? onCompleted;
   final int initialStep;
+  final bool editRegister;
+  final bool beforeEnrollment;
   final ScaleService? scales;
   final ConsoleService? console;
   final EnrollmentService enrollmentService;
@@ -47,8 +59,11 @@ class DeviceSetupPage extends StatefulWidget {
   State<DeviceSetupPage> createState() => _DeviceSetupPageState();
 }
 
+enum _RegisterCheck { unverified, ready, blocked }
+
 class _DeviceSetupPageState extends State<DeviceSetupPage> {
   static const _storage = FlutterSecureStorage();
+  static const _registerDraftKey = 'setup_local_register_v1';
   static final _actionButtonStyle = FilledButton.styleFrom(
     minimumSize: const Size.fromHeight(56),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -70,6 +85,14 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       key: TextEditingController(),
   };
   FiscalModel _model = FiscalModel.tremolM20;
+  String _transport = 'lan';
+  FiscalSerialDevice? _serialDevice;
+  int _baudRate = 115200;
+  bool get _localSerial => _transport != 'lan';
+  bool get _android =>
+      !kIsWeb && defaultTargetPlatform == TargetPlatform.android;
+  String get _transportLabel => _transport == 'usb' ? 'USB' : 'Bluetooth';
+
   bool _busy = true;
   int _step = 0;
   SetupProfile _profile = SetupProfile.pos;
@@ -91,11 +114,13 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     return steps;
   }
 
-  bool _ecrVerified = false;
+  _RegisterCheck _registerCheck = _RegisterCheck.unverified;
+  bool get _ecrVerified => _registerCheck == _RegisterCheck.ready;
   bool _vivaEnabled = false;
   bool _hardwareSaved = false;
   Map<String, dynamic> _savedHardware = {};
   final _scroll = ScrollController();
+  final _statusKey = GlobalKey();
   late final ConsoleService _console = widget.console ?? ConsoleService();
   final _stepAction = ValueNotifier<SetupAction?>(null);
   String? _feedback;
@@ -132,6 +157,12 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
 
   Future<void> _load() async {
     try {
+      if (widget.beforeEnrollment) {
+        _transport = 'usb';
+        await _loadHardware();
+        _defaults();
+        return;
+      }
       final savedProfile = await _storage.read(key: 'setup_profile_v1');
       _printerConfigured =
           await _storage.read(key: 'production_printer_v1') != null;
@@ -163,25 +194,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
           _step = savedStep;
         }
       }
-      final saved = await _storage.read(key: 'local_hardware_v1');
-      if (saved != null) {
-        final value = jsonDecode(saved) as Map<String, dynamic>;
-        _savedHardware = value;
-        if (value['model'] is String) {
-          _model = FiscalModel.values.byName(value['model'] as String);
-        }
-        _datecsProfile = DatecsProfile.values.byName(
-          value['datecsProfile'] as String? ?? 'auto',
-        );
-        for (final key in _fields.keys) {
-          _fields[key]!.text = value[key] as String? ?? '';
-        }
-        _vivaEnabled =
-            value['vivaEnabled'] == 'true' ||
-            (value['vivaEnabled'] == null &&
-                _fields['vivaHost']!.text.trim().isNotEmpty);
-        debugLog('Configurație locală încărcată.');
-      }
+      await _loadHardware();
       _defaults();
     } catch (_) {
       debugLog('Configurația locală nu poate fi citită.');
@@ -191,6 +204,76 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
         _dialogRefresh?.call();
       }
     }
+  }
+
+  bool _hasRegister(Map<String, dynamic> settings) =>
+      (settings['host'] is String && (settings['host'] as String).isNotEmpty) ||
+      (settings['deviceId'] is String &&
+          (settings['deviceId'] as String).isNotEmpty);
+
+  Future<void> _loadHardware() async {
+    // A local preview may be opened even if an older installation lost its
+    // enrollment. Never load its operational hardware or secrets into this route.
+    final saved = widget.beforeEnrollment
+        ? null
+        : await _storage.read(key: 'local_hardware_v1');
+    final active = saved == null
+        ? <String, dynamic>{}
+        : jsonDecode(saved) as Map<String, dynamic>;
+    _savedHardware = active;
+    final draft = _hasRegister(active)
+        ? null
+        : await _storage.read(key: _registerDraftKey);
+    if (active.isEmpty && draft == null) return;
+    final value = {
+      ...active,
+      if (draft != null) ...jsonDecode(draft) as Map<String, dynamic>,
+    };
+    if (value['model'] is String) {
+      _model = FiscalModel.values.byName(value['model'] as String);
+    }
+    _datecsProfile = DatecsProfile.values.byName(
+      value['datecsProfile'] as String? ?? 'auto',
+    );
+    _transport = value['transport'] as String? ?? 'lan';
+    if (_localSerial && value['deviceId'] is String) {
+      _serialDevice = (
+        id: value['deviceId'] as String,
+        label: value['deviceLabel'] as String? ?? value['deviceId'] as String,
+      );
+      _baudRate = int.tryParse('${value['baudRate']}') ?? 115200;
+    }
+    for (final key in _fields.keys) {
+      _fields[key]!.text = value[key] as String? ?? '';
+    }
+    _vivaEnabled =
+        value['vivaEnabled'] == 'true' ||
+        (value['vivaEnabled'] == null &&
+            _fields['vivaHost']!.text.trim().isNotEmpty);
+    debugLog('Configurație locală încărcată.');
+  }
+
+  Future<void> _configureBeforeEnrollment() async {
+    final saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute(
+        builder: (_) => const DeviceSetupPage(
+          initialStep: 2,
+          editRegister: true,
+          beforeEnrollment: true,
+        ),
+      ),
+    );
+    if (!mounted || saved != true) return;
+    await _loadHardware();
+    if (!mounted) return;
+    setState(_defaults);
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Conexiune salvată local. Vei verifica această casă la înrolare.',
+        ),
+      ),
+    );
   }
 
   void _defaults() {
@@ -226,17 +309,129 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     }
   }
 
-  LanEndpoint _endpoint() => LanEndpoint(
-    host: _fields['host']!.text.trim(),
-    port: int.parse(_fields['port']!.text.trim()),
-  );
+  Map<String, Object?> get _endpointSettings => {
+    'transport': _transport,
+    'model': _model.name,
+    'datecsProfile': _datecsProfile.name,
+    if (_localSerial) ...{
+      'deviceId': _serialDevice?.id,
+      'deviceLabel': _serialDevice?.label,
+      if (_transport == 'usb') 'baudRate': _baudRate.toString(),
+    } else ...{
+      'host': _fields['host']!.text.trim(),
+      'port': _fields['port']!.text.trim(),
+    },
+  };
+
+  FiscalEndpoint _endpoint() => FiscalEndpoint.fromSettings(_endpointSettings);
+
+  void _changeTransport(String value) {
+    if (value == _transport) return;
+    setState(() {
+      _transport = value;
+      _registerCheck = _RegisterCheck.unverified;
+      _feedback = null;
+      _devices = [];
+      _serialDevice = null;
+      _payments = [];
+      _datecsProfile = _localSerial
+          ? DatecsProfile.asciiMx
+          : DatecsProfile.auto;
+      if (_model == FiscalModel.datecsDp25) {
+        _fields['cashCode']!.text = _localSerial ? '0' : 'P';
+        _fields['cardCode']!.text = _localSerial ? '1' : 'D';
+      }
+    });
+  }
+
+  void _selectDatecsProfile(DatecsProfile value) {
+    if (value == _datecsProfile) return;
+    _datecsProfile = value;
+    _registerCheck = _RegisterCheck.unverified;
+    _feedback = null;
+    _payments = [];
+    if (_localSerial) {
+      _serialDevice = null;
+      _fields['cashCode']!.text = value == DatecsProfile.legacyRou ? 'P' : '0';
+      _fields['cardCode']!.text = value == DatecsProfile.legacyRou ? 'D' : '1';
+    }
+  }
+
+  Widget _datecsProtocol(ValueChanged<DatecsProfile> onChanged) =>
+      DropdownButtonFormField<DatecsProfile>(
+        key: ValueKey('datecs-${_datecsProfile.name}-$_transport'),
+        initialValue: _localSerial && _datecsProfile == DatecsProfile.auto
+            ? DatecsProfile.asciiMx
+            : _datecsProfile,
+        isExpanded: true,
+        decoration: const InputDecoration(labelText: 'Protocol Datecs'),
+        items: [
+          if (!_localSerial)
+            const DropdownMenuItem(
+              value: DatecsProfile.auto,
+              child: Text('Detectare automată'),
+            ),
+          const DropdownMenuItem(
+            value: DatecsProfile.asciiMx,
+            child: Text('ASCII / MX'),
+          ),
+          const DropdownMenuItem(
+            value: DatecsProfile.legacyRou,
+            child: Text('ROU vechi'),
+          ),
+        ],
+        onChanged: _busy
+            ? null
+            : (value) {
+                if (value != null) onChanged(value);
+              },
+      );
+
+  Future<void> _chooseSerial() async {
+    final device = await showDialog<FiscalSerialDevice>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => FiscalSerialPicker(
+        transport: _transport,
+        model: _model,
+        baudRate: _baudRate,
+        legacyDatecs:
+            _model == FiscalModel.datecsDp25 &&
+            _datecsProfile == DatecsProfile.legacyRou,
+      ),
+    );
+    if (!mounted || device == null) return;
+    setState(() {
+      _serialDevice = device;
+      _registerCheck = _RegisterCheck.unverified;
+      _feedback = null;
+      _payments = [];
+    });
+  }
+
+  Future<void> _configureFp21Bluetooth() async {
+    if (_busy ||
+        _transport != 'usb' ||
+        _model != FiscalModel.tremolFp21 ||
+        _serialDevice == null) {
+      return;
+    }
+    final radio = Fp21Bluetooth(_endpoint() as FiscalSerialEndpoint);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) =>
+          Fp21BluetoothDialog(readState: radio.readState, enable: radio.enable),
+    );
+  }
+
   FiscalConnection _connection({bool discovery = false}) => FiscalConnection(
     id: 'local-ecr',
     model: _model,
     endpoint: _endpoint(),
     operatorNumber: int.parse(_fields['operator']!.text),
     operatorPassword: _fields['password']!.text,
-    tcpPassword: _fields['tcpPassword']!.text,
+    tcpPassword: _localSerial ? '' : _fields['tcpPassword']!.text,
     cashPaymentCode: _fields['cashCode']!.text.trim(),
     cardPaymentCode: _fields['cardCode']!.text.trim(),
     tillNumber: _fields['till']!.text.trim(),
@@ -250,7 +445,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     try {
       await action();
     } on TremolLanPasswordRequired catch (error) {
-      _ecrVerified = false;
+      _registerCheck = _RegisterCheck.unverified;
       debugLog(error.toString());
       _feedback = error.toString();
       if (mounted &&
@@ -339,7 +534,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     if (value == null || !mounted) return false;
     setState(() {
       _fields[key]!.text = value;
-      _ecrVerified = false;
+      _registerCheck = _RegisterCheck.unverified;
     });
     return true;
   }
@@ -362,7 +557,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   );
 
   void _select(Map<String, dynamic> device) {
-    _ecrVerified = false;
+    _registerCheck = _RegisterCheck.unverified;
     _feedback = null;
     _fields['host']!.text = device['host'] as String;
     _fields['port']!.text = '${device['port']}';
@@ -414,19 +609,28 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   });
 
   Future<void> _status() => _run(() async {
+    _registerCheck = _RegisterCheck.unverified;
     final endpoint = _endpoint();
     debugLog(
-      'Conectare la ${endpoint.host}:${endpoint.port} · ${_datecsProfile.name}…',
+      'Verificare ${_localSerial ? _transportLabel : endpoint.key} · ${_model.name}…',
     );
     if (_model == FiscalModel.datecsDp25) {
       final inspection = await DatecsDeviceClient(
         endpoint,
         profile: _datecsProfile,
       ).inspect(readPayments: true);
-      _datecsProfile = inspection.profile;
+      if (inspection.connected && inspection.profile != DatecsProfile.auto) {
+        _datecsProfile = inspection.profile;
+      }
       debugLog(inspection.description);
       _feedback = inspection.description;
-      _ecrVerified = inspection.ready;
+      _registerCheck = inspection.ready
+          ? _RegisterCheck.ready
+          : (_localSerial &&
+                inspection.connected &&
+                inspection.profile != DatecsProfile.auto)
+          ? _RegisterCheck.blocked
+          : _RegisterCheck.unverified;
       if (mounted) {
         setState(() => _payments = inspection.payments);
       }
@@ -451,15 +655,44 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     } else {
       final adapter = TremolAdapter(_connection(discovery: true));
       final status = await adapter.readStatus();
-      if (status.ready) {
+      // A valid status frame identifies the register even with an open document
+      // or a latched power warning. Enrollment never clears a fiscal condition.
+      final identified =
+          _localSerial && status.details.containsKey('statusBytes');
+      if (status.ready || identified) {
         final operator = await adapter.readOperatorConfiguration();
         _fields['password']!.text = operator['password']!;
       }
-      _ecrVerified = status.ready;
+      _registerCheck = status.ready
+          ? _RegisterCheck.ready
+          : identified
+          ? _RegisterCheck.blocked
+          : _RegisterCheck.unverified;
       debugLog(status.description);
       _feedback = status.description;
     }
-  });
+  }).whenComplete(_showStatus);
+
+  void _showStatus() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _step != 2 || _feedback == null || !_scroll.hasClients) {
+        return;
+      }
+      final status = _statusKey.currentContext;
+      if (status != null) {
+        Scrollable.ensureVisible(
+          status,
+          duration: const Duration(milliseconds: 180),
+        );
+      } else {
+        _scroll.animateTo(
+          _scroll.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+        );
+      }
+    });
+  }
 
   Future<void> _save() => _run(() async {
     _hardwareSaved = false;
@@ -481,11 +714,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     final next = {
       ..._savedHardware,
       if (_step == 2) ...{
-        'model': _model.name,
-        'datecsProfile': _datecsProfile.name,
         'paymentCatalog': _payments,
         for (final key in _fields.keys.where((key) => !key.startsWith('viva')))
           key: _fields[key]!.text,
+        ..._endpointSettings,
       },
       if (_step == 3) ...{
         'vivaEnabled': '$_vivaEnabled',
@@ -493,8 +725,28 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
           key: _fields[key]!.text,
       },
     };
-    await _storage.write(key: 'local_hardware_v1', value: jsonEncode(next));
-    _savedHardware = next;
+    if (_step == 2) {
+      if (_localSerial) {
+        next.remove('host');
+        next.remove('port');
+        next.remove('tcpPassword');
+      } else {
+        next.remove('deviceId');
+        next.remove('deviceLabel');
+      }
+      if (_transport != 'usb') next.remove('baudRate');
+    }
+    if (widget.beforeEnrollment) {
+      // The enrolled wizard reads operator credentials again when verifying the
+      // selected register. The draft cannot activate the bridge or replace an assignment.
+      next.remove('password');
+      next.remove('tcpPassword');
+      await _storage.write(key: _registerDraftKey, value: jsonEncode(next));
+    } else {
+      await _storage.write(key: 'local_hardware_v1', value: jsonEncode(next));
+      _savedHardware = next;
+      if (_step == 2) await _storage.delete(key: _registerDraftKey);
+    }
     debugLog('Configurație salvată securizat.');
     _hardwareSaved = true;
   });
@@ -502,6 +754,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
   Future<void> _next({bool skipEcr = false}) async {
     if ((_step == 2 && !skipEcr) || _step == 3) await _save();
     if (mounted && (_step < 2 || _step >= 5 || skipEcr || _hardwareSaved)) {
+      if (widget.editRegister) {
+        Navigator.pop(context, widget.beforeEnrollment ? !skipEcr : null);
+        return;
+      }
       final next = _steps[_steps.indexOf(_step) + 1];
       if (_step == 5 || _step == 8) {
         await _storage.write(
@@ -714,35 +970,39 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                     ),
                   ),
                 ] else ...[
-                  if (_model == FiscalModel.datecsDp25)
+                  if (_transport == 'usb')
                     Padding(
                       padding: const EdgeInsets.only(bottom: 12),
-                      child: DropdownButtonFormField<DatecsProfile>(
+                      child: DropdownButtonFormField<int>(
+                        initialValue: _baudRate,
                         isExpanded: true,
-                        initialValue: _datecsProfile,
                         decoration: const InputDecoration(
-                          labelText: 'Protocol Datecs',
+                          labelText: 'Viteză USB (baud)',
                         ),
-                        items: const [
-                          DropdownMenuItem(
-                            value: DatecsProfile.auto,
-                            child: Text('Detectare automată'),
-                          ),
-                          DropdownMenuItem(
-                            value: DatecsProfile.asciiMx,
-                            child: Text('ASCII / MX'),
-                          ),
-                          DropdownMenuItem(
-                            value: DatecsProfile.legacyRou,
-                            child: Text('ROU vechi'),
-                          ),
+                        items: [
+                          for (final rate in const [
+                            9600,
+                            19200,
+                            38400,
+                            57600,
+                            115200,
+                          ])
+                            DropdownMenuItem(value: rate, child: Text('$rate')),
                         ],
                         onChanged: _busy
                             ? null
-                            : (value) => change(() {
-                                _datecsProfile = value!;
-                                _ecrVerified = false;
+                            : (rate) => change(() {
+                                _baudRate = rate!;
+                                _registerCheck = _RegisterCheck.unverified;
+                                _feedback = null;
                               }),
+                      ),
+                    ),
+                  if (_model == FiscalModel.datecsDp25 && !_localSerial)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 12),
+                      child: _datecsProtocol(
+                        (value) => change(() => _selectDatecsProfile(value)),
                       ),
                     ),
                   _row(
@@ -751,7 +1011,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                   ),
                   const SizedBox(height: 12),
                   _passwordAction('password', 'Parolă operator fiscal'),
-                  if (_model != FiscalModel.datecsDp25)
+                  if (_model != FiscalModel.datecsDp25 && !_localSerial)
                     _passwordAction('tcpPassword', 'Parolă LAN / Wi-Fi'),
                   const SizedBox(height: 12),
                   _row(
@@ -788,7 +1048,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
     onChanged: (_) {
       if (!key.startsWith('viva')) {
         setState(() {
-          _ecrVerified = false;
+          _registerCheck = _RegisterCheck.unverified;
           _feedback = null;
         });
       }
@@ -814,6 +1074,10 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
 
   Future<void> _back() async {
     if (_busy || _stepAction.value?.busy == true) return;
+    if (widget.editRegister) {
+      Navigator.pop(context);
+      return;
+    }
     final previous = _steps[_steps.indexOf(_step) - 1];
     await _storage.write(key: 'setup_step_v3', value: '$previous');
     if (!mounted) return;
@@ -831,10 +1095,19 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       2 => SetupAction(
         _busy
             ? 'Se verifică…'
-            : _ecrVerified
-            ? 'Continuă'
-            : 'Verifică ECR',
-        _ecrVerified ? _next : _status,
+            : _localSerial && _serialDevice == null
+            ? 'Alege casa $_transportLabel'
+            : switch (_registerCheck) {
+                _RegisterCheck.ready =>
+                  widget.editRegister ? 'Salvează conexiunea' : 'Continuă',
+                _RegisterCheck.blocked => 'Salvează conexiunea',
+                _RegisterCheck.unverified => 'Verifică ECR',
+              },
+        _localSerial && _serialDevice == null
+            ? _chooseSerial
+            : _registerCheck == _RegisterCheck.unverified
+            ? _status
+            : _next,
       ),
       3 => SetupAction(_vivaEnabled ? 'Continuă' : 'Mai târziu', _next),
       4 => SetupAction('Finalizează', _complete),
@@ -865,11 +1138,21 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
               child: Text(action.label, textAlign: TextAlign.center),
             ),
           ),
+          if (_step == 0 && _android) ...[
+            const SizedBox(height: 8),
+            TextButton.icon(
+              icon: const Icon(Icons.point_of_sale_outlined),
+              onPressed: _busy || stepAction?.busy == true
+                  ? null
+                  : _configureBeforeEnrollment,
+              label: const Text('Configurează casa'),
+            ),
+          ],
           if (_step == 2) ...[
             const SizedBox(height: 8),
             TextButton(
               onPressed: _busy ? null : () => _next(skipEcr: true),
-              child: const Text('Mai târziu'),
+              child: Text(widget.editRegister ? 'Anulează' : 'Mai târziu'),
             ),
           ],
         ],
@@ -892,7 +1175,17 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
             )
           : null,
       actions: [
-        if (_audience != SetupAudience.back)
+        if (_step == 0 &&
+            !kIsWeb &&
+            defaultTargetPlatform == TargetPlatform.android)
+          IconButton(
+            tooltip: 'Testează Activa FP21 prin USB',
+            icon: const Icon(Icons.usb),
+            onPressed: _busy || stepAction?.busy == true
+                ? null
+                : () => showFp21UsbDialog(context),
+          ),
+        if (!widget.beforeEnrollment && _audience != SetupAudience.back)
           IconButton(
             tooltip: 'Ecran client',
             onPressed: _busy || stepAction?.busy == true
@@ -907,7 +1200,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
       ],
       body: SetupFrame(
         step: _step,
-        steps: _steps,
+        steps: widget.editRegister ? const [2] : _steps,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 720),
           child: Column(
@@ -1056,7 +1349,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                             ),
                             DropdownMenuItem(
                               value: FiscalModel.tremolFp21,
-                              child: Text('Tremol FP21'),
+                              child: Text('Activa FP21 (Tremol)'),
                             ),
                             DropdownMenuItem(
                               value: FiscalModel.datecsDp25,
@@ -1068,18 +1361,65 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                               : (value) => setState(() {
                                   if (value == null || value == _model) return;
                                   _model = value;
-                                  _ecrVerified = false;
+                                  _serialDevice = null;
+                                  _feedback = null;
+                                  _datecsProfile = _localSerial
+                                      ? DatecsProfile.asciiMx
+                                      : DatecsProfile.auto;
+                                  _registerCheck = _RegisterCheck.unverified;
                                   _devices = [];
                                   _payments = [];
                                   _fields['cashCode']!.clear();
                                   _fields['cardCode']!.clear();
                                   _fields['port']!.clear();
                                   _defaults();
+                                  if (_localSerial &&
+                                      _model == FiscalModel.datecsDp25) {
+                                    _fields['cashCode']!.text = '0';
+                                    _fields['cardCode']!.text = '1';
+                                  }
                                 }),
                         ),
                       ),
                       const SizedBox(height: 12),
-                      ...[
+                      if (_android || _localSerial)
+                        SetupCard(
+                          child: DropdownButtonFormField<String>(
+                            key: ValueKey('fiscal-transport-$_transport'),
+                            initialValue: _transport,
+                            isExpanded: true,
+                            decoration: const InputDecoration(
+                              labelText: 'Conexiune',
+                            ),
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'lan',
+                                child: Text('LAN / Wi-Fi'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'usb',
+                                child: Text('USB'),
+                              ),
+                              DropdownMenuItem(
+                                value: 'bluetooth',
+                                child: Text('Bluetooth'),
+                              ),
+                            ],
+                            onChanged: _busy
+                                ? null
+                                : (value) {
+                                    if (value != null) _changeTransport(value);
+                                  },
+                          ),
+                        ),
+                      if (_localSerial && _model == FiscalModel.datecsDp25)
+                        SetupCard(
+                          child: _datecsProtocol(
+                            (value) =>
+                                setState(() => _selectDatecsProfile(value)),
+                          ),
+                        ),
+                      if (!_localSerial) ...[
                         OutlinedButton.icon(
                           onPressed: _busy ? null : _discover,
                           icon: const Icon(Icons.wifi_find, size: 18),
@@ -1107,30 +1447,79 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                                 : () => setState(() => _select(device)),
                           ),
                         const SizedBox(height: 12),
-                      ],
-                      SetupCard(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text(
-                              'ADRESĂ DISPOZITIV',
-                              style: TextStyle(
-                                fontSize: 10,
-                                letterSpacing: 1.3,
-                                color: Colors.white54,
+                        SetupCard(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'ADRESĂ DISPOZITIV',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  letterSpacing: 1.3,
+                                  color: Colors.white54,
+                                ),
                               ),
-                            ),
-                            const SizedBox(height: 12),
-                            _row(
-                              _input('host', 'IP local ECR'),
-                              _input('port', 'Port', numeric: true),
-                            ),
-                          ],
+                              const SizedBox(height: 12),
+                              _row(
+                                _input('host', 'IP local ECR'),
+                                _input('port', 'Port', numeric: true),
+                              ),
+                            ],
+                          ),
                         ),
-                      ),
+                      ] else if (_serialDevice case final device?) ...[
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            _transport == 'usb' ? Icons.usb : Icons.bluetooth,
+                          ),
+                          title: Text(device.label),
+                          subtitle: const Text('Schimbă dispozitivul'),
+                          onTap: _busy ? null : _chooseSerial,
+                        ),
+                        if (_android &&
+                            _transport == 'usb' &&
+                            _model == FiscalModel.tremolFp21)
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            leading: const Icon(Icons.settings_bluetooth),
+                            title: const Text('Bluetooth pe Activa FP21'),
+                            subtitle: const Text(
+                              'Verifică modulul casei prin USB',
+                            ),
+                            onTap: _busy ? null : _configureFp21Bluetooth,
+                          ),
+                        ListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('Adresă echipament în ERP'),
+                          subtitle: SelectableText(_endpoint().key),
+                          trailing: IconButton(
+                            tooltip: 'Copiază adresa',
+                            icon: const Icon(Icons.copy),
+                            onPressed: () async {
+                              await Clipboard.setData(
+                                ClipboardData(text: _endpoint().key),
+                              );
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Adresă copiată'),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                      ] else
+                        Text(
+                          _transport == 'usb'
+                              ? 'Conectează casa prin cablu la terminalul Android.'
+                              : 'Alege o casă cu Bluetooth serial (SPP) asociată cu acest terminal Android.',
+                        ),
                       const SizedBox(height: 12),
                       if (_feedback != null)
                         SetupCard(
+                          key: _statusKey,
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -1156,7 +1545,18 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                             ],
                           ),
                         ),
-                      if (_model == FiscalModel.datecsDp25)
+                      if (!widget.beforeEnrollment &&
+                          _model == FiscalModel.tremolFp21 &&
+                          _android)
+                        TextButton.icon(
+                          onPressed: _busy
+                              ? null
+                              : () => showFp21UsbDialog(context),
+                          icon: const Icon(Icons.build_outlined, size: 18),
+                          label: const Text('Diagnostic USB FP21'),
+                        ),
+                      if (!widget.beforeEnrollment &&
+                          _model == FiscalModel.datecsDp25)
                         TextButton(
                           onPressed: _busy ? null : () => _diagnosticDialog(),
                           child: const Text('Diagnostic ECR'),
@@ -1268,9 +1668,7 @@ class _DeviceSetupPageState extends State<DeviceSetupPage> {
                           leading: const Icon(Icons.receipt_long_outlined),
                           title: const Text('Casa de marcat'),
                           subtitle: Text(
-                            _savedHardware['host'] is String &&
-                                    (_savedHardware['host'] as String)
-                                        .isNotEmpty
+                            _hasRegister(_savedHardware)
                                 ? 'Configurată'
                                 : 'De configurat mai târziu',
                           ),

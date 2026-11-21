@@ -12,7 +12,7 @@ class TremolPeer implements ByteSession {
   final List<int> commands = [];
   int? loseOn;
   int? reject03On;
-  int registerFlags = 0;
+  final statusBytes = [0, 0, 0, 0x30, 0, 0, 0];
   String subtotal = '20.00';
   String operatorName = 'Test operator';
   bool closed = false;
@@ -58,7 +58,7 @@ class TremolPeer implements ByteSession {
           .trim();
     }
     final data = switch (command) {
-      0x20 => [0, registerFlags, 0, 0x30, 0, 0, 0],
+      0x20 => statusBytes,
       0x33 => ascii.encode(subtotal),
       0x71 => ascii.encode('0001;0000001'),
       0x6a => ascii.encode('1;${operatorName.padRight(20)};1234;'),
@@ -77,9 +77,12 @@ class TremolPeer implements ByteSession {
   }
 }
 
-FiscalConnection connection({String tcpPassword = ''}) => FiscalConnection(
+FiscalConnection connection({
+  String tcpPassword = '',
+  FiscalModel model = FiscalModel.tremolM20,
+}) => FiscalConnection(
   id: 'ecr',
-  model: FiscalModel.tremolM20,
+  model: model,
   endpoint: LanEndpoint(host: '192.168.1.20', port: 9100),
   operatorNumber: 1,
   operatorPassword: '1234',
@@ -227,8 +230,19 @@ void main() {
     expect(peer.commands, [0x6a]);
     expect(peer.closed, isTrue);
   });
+  test('a prior power interruption still blocks an FP21 fiscal receipt', () async {
+    final peer = TremolPeer();
+    peer.statusBytes.setAll(0, [0x82, 0x80, 0x80, 0xd0, 0xa1, 0x80, 0x80]);
+    final adapter = TremolAdapter(
+      connection(model: FiscalModel.tremolFp21),
+      sessions: (_) async => peer,
+    );
+    expect((await adapter.readStatus()).ready, isFalse);
+    expect((await adapter.printReceipt(receipt())).outcome, CommandOutcome.rejected);
+    expect(peer.commands, [0x20, 0x20]);
+  });
   test('status exposes fiscal register flags without printing', () async {
-    final peer = TremolPeer()..registerFlags = 0x28;
+    final peer = TremolPeer()..statusBytes[1] = 0x28;
     final status = await TremolAdapter(connection(), sessions: (_) async => peer).readStatus();
     expect(status.details['dailyReportNonZero'], true);
     expect(status.details['operatorReportNonZero'], true);

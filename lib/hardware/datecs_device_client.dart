@@ -5,6 +5,7 @@ import 'contracts.dart';
 import 'datecs_gateway_protocol.dart';
 import 'datecs_rou_adapter.dart';
 import 'tcp_transport.dart';
+import 'fiscal_byte_session.dart';
 
 enum DatecsProfile { auto, asciiMx, legacyRou }
 
@@ -32,25 +33,29 @@ class DatecsDeviceClient {
     Future<Map<String, Object?>> Function()? legacyProbe,
   }) : _sessions =
            sessions ??
-           ((endpoint) => TcpByteSession.connectWithTimeouts(
+           ((endpoint) => FiscalByteSession.connectWithTimeouts(
              endpoint,
              replyTimeout: const Duration(seconds: 2),
            )),
        _printSessions =
            sessions ??
-           ((endpoint) => TcpByteSession.connectWithTimeouts(
+           ((endpoint) => FiscalByteSession.connectWithTimeouts(
              endpoint,
              replyTimeout: const Duration(seconds: 60),
            )),
        _legacyProbe =
            legacyProbe ?? (() => DatecsRouAdapter.probeEndpoint(endpoint));
-  final LanEndpoint endpoint;
+  final FiscalEndpoint endpoint;
   final DatecsProfile profile;
   final SessionFactory _sessions;
   final SessionFactory _printSessions;
   final Future<Map<String, Object?>> Function() _legacyProbe;
+  String get _link => switch (endpoint) {
+    FiscalSerialEndpoint(:final transport) => transport == 'usb' ? 'USB' : 'Bluetooth',
+    LanEndpoint() => 'TCP',
+  };
   int _nextSequence() =>
-      DatecsGatewayProtocol.nextSequence('${endpoint.host}:${endpoint.port}');
+      DatecsGatewayProtocol.nextSequence(endpoint.key);
 
   Future<List<String>> _command(
     ByteSession session,
@@ -84,6 +89,36 @@ class DatecsDeviceClient {
 
   bool _printerReady(List<int> bits) =>
       (bits[0] & 0x70) == 0 && (bits[2] & 0x05) == 0;
+
+  /// Romanian FP_Protocol_RO, command 50. The seven tax slots precede the timestamp.
+  Future<Map<String, double>> readMxVatRates() async {
+    final session = await _sessions(endpoint);
+    try {
+      final fields = await _command(session, 50, '');
+      if (fields.length != 10 ||
+          !RegExp(r'^\d+$').hasMatch(fields[1]) ||
+          fields.last.isEmpty) {
+        throw const FormatException('Invalid Romanian Datecs VAT response');
+      }
+      final rates = <String, double>{};
+      for (var i = 0; i < 7; i++) {
+        final value = fields[i + 2];
+        if (!RegExp(r'^\d{1,3}(?:\.\d{1,2})?$').hasMatch(value)) {
+          throw const FormatException('Invalid Datecs VAT rate');
+        }
+        final rate = double.parse(value);
+        if (rate < 100) {
+          rates[String.fromCharCode(65 + i)] = rate;
+        } else if (rate != 100 && rate != 100.01 && rate != 100.02) {
+          throw const FormatException('Unknown Datecs VAT category');
+        }
+        // Exempt, other taxes and disabled slots do not encode a numeric rate.
+      }
+      return rates;
+    } finally {
+      await session.close();
+    }
+  }
 
   Future<DatecsInspection> inspect({bool readPayments = false}) async {
     ByteSession? session;
@@ -122,7 +157,7 @@ class DatecsDeviceClient {
           profile: DatecsProfile.asciiMx,
           ready: state[1] == '0' && _printerReady(statusBits),
           description:
-              'TCP conectat · Datecs ASCII/MX · ${state[1] == '0' ? 'document închis' : 'document deschis (${state[1]})'}${_printerReady(statusBits) ? '' : ' · ECR are o eroare (hârtie/capac/imprimare)'}',
+              '$_link conectat · Datecs ASCII/MX · ${state[1] == '0' ? 'document închis' : 'document deschis (${state[1]})'}${_printerReady(statusBits) ? '' : ' · ECR are o eroare (hârtie/capac/imprimare)'}',
           payments: payments,
         );
       } on DatecsCommandException catch (error) {
@@ -131,20 +166,20 @@ class DatecsDeviceClient {
           profile: DatecsProfile.asciiMx,
           ready: false,
           description:
-              'TCP conectat · Datecs ASCII/MX · eroare ECR ${error.code}',
+              '$_link conectat · Datecs ASCII/MX · eroare ECR ${error.code}',
         );
       } on SocketException catch (error) {
-        detail = 'TCP: ${error.osError?.message ?? error.message}';
+        detail = '$_link: ${error.osError?.message ?? error.message}';
       } on TimeoutException {
-        detail = 'TCP conectat, fără răspuns ASCII/MX în 2 secunde';
+        detail = '$_link conectat, fără răspuns ASCII/MX în 2 secunde';
       } catch (error) {
         detail =
-            'TCP conectat, răspuns ASCII/MX invalid (${error.runtimeType})';
+            '$_link conectat, răspuns ASCII/MX invalid (${error.runtimeType})';
       } finally {
         await session?.close();
       }
     }
-    if (profile != DatecsProfile.asciiMx) {
+    if (profile == DatecsProfile.legacyRou || (profile == DatecsProfile.auto && endpoint is LanEndpoint)) {
       try {
         final legacy = await _legacyProbe();
         if (legacy['protocolConfirmed'] == true) {
@@ -153,7 +188,7 @@ class DatecsDeviceClient {
             profile: DatecsProfile.legacyRou,
             ready: legacy['ready'] == true,
             description:
-                'TCP conectat · Datecs ROU vechi · ${legacy['description']}',
+                '$_link conectat · Datecs ROU vechi · ${legacy['description']}',
           );
         }
         detail =
@@ -166,7 +201,7 @@ class DatecsDeviceClient {
       connected: connected,
       profile: DatecsProfile.auto,
       ready: false,
-      description: '${endpoint.host}:${endpoint.port} · $detail',
+      description: '${endpoint.label} · $detail',
     );
   }
 
@@ -212,7 +247,7 @@ class DatecsDeviceClient {
         dispatched ? CommandOutcome.unknown : CommandOutcome.rejected,
         message: dispatched
             ? 'Răspuns raport pierdut. Verifică hârtia înainte de retransmitere.'
-            : 'Conexiunea TCP nu a putut fi deschisă.',
+            : 'Conexiunea $_link nu a putut fi deschisă.',
       );
     } finally {
       await session?.close();

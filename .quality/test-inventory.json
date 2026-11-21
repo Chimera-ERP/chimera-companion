@@ -46,13 +46,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "integration",
+      "behavior": "Checks Tremol receipt validation, tender and line representation, subtotal and close handling, and vendor protocol sequencing.",
       "ruleIds": [],
       "scenarioIds": [],
-      "command": "flutter test test/adapters_test.dart",
-      "metadataStatus": "needs-classification",
+      "command": "flutter test --no-pub test/adapters_test.dart",
+      "metadataStatus": "documented",
       "limitations": [
+        "Loopback protocol fixtures.",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -378,13 +379,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "integration",
+      "behavior": "Reads Datecs MX VAT configuration and status, detects the profile, and checks that a lost response cannot dispatch a second report.",
       "ruleIds": [],
       "scenarioIds": [],
-      "command": "flutter test test/datecs_device_client_test.dart",
-      "metadataStatus": "needs-classification",
+      "command": "flutter test --no-pub test/datecs_device_client_test.dart",
+      "metadataStatus": "documented",
       "limitations": [
+        "Local protocol fixtures.",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -396,13 +398,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "unit",
+      "behavior": "Checks the Romanian Datecs SDK bridge, configured VAT slots, accepted receipt constraints and lost responses.",
       "ruleIds": [],
       "scenarioIds": [],
-      "command": "flutter test test/datecs_native_test.dart",
-      "metadataStatus": "needs-classification",
+      "command": "flutter test --no-pub test/datecs_native_test.dart",
+      "metadataStatus": "documented",
       "limitations": [
+        "Synthetic Android method channel.",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -515,6 +518,44 @@
       ]
     },
     {
+      "id": "chimera-companion:7b4b807596ade2b3f327",
+      "repository": "chimera-companion",
+      "source": "test/fiscal_byte_session_test.dart",
+      "title": "fiscal_byte_session_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Tremol and Datecs MX normal checkout validates framing, register identity, incomplete replies and original close recovery over USB and Bluetooth.",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test --no-pub test/fiscal_byte_session_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Native transport fixture; vendor firmware and cashier workflow require physical qualification.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:8f8c8763d249a7eb3c62",
+      "repository": "chimera-companion",
+      "source": "test/fiscal_connection_setup_test.dart",
+      "title": "fiscal_connection_setup_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Android register setup verifies and saves USB and paired Bluetooth, preserves the selected device across reopen and recovers from denied permission. FP21 radio setup reads before enabling and offers a read-only check after a lost response.",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test --no-pub test/fiscal_connection_setup_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Flutter widgets and register protocol fixtures; physical Android permission dialogs and real peripherals are verified separately.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
       "id": "chimera-companion:4ab530984f90deb6da6b",
       "repository": "chimera-companion",
       "source": "test/fiscal_device_test.dart",
@@ -522,13 +563,109 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "integration",
+      "behavior": "Validates Datecs receipt drafts, effective VAT mapping, fiscal totals and original journal evidence when closure is uncertain.",
       "ruleIds": [],
       "scenarioIds": [],
-      "command": "flutter test test/fiscal_device_test.dart",
-      "metadataStatus": "needs-classification",
+      "command": "flutter test --no-pub test/fiscal_device_test.dart",
+      "metadataStatus": "documented",
       "limitations": [
+        "Synthetic fiscal device, no physical journal or receipt.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:7d4c53ebc6bc81a03abc",
+      "repository": "chimera-companion",
+      "source": "test/fp21_bluetooth_test.dart",
+      "title": "fp21_bluetooth_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "FP21 radio support, physical module and radio responses, a single user-requested enable, verified readback, changed register and uncertain USB reply",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test --no-pub test/fp21_bluetooth_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Uses a simulated USB peer. Android bonding and actual radio visibility require the physical acceptance check.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:4aa19a468f4a440449d8",
+      "repository": "chimera-companion",
+      "source": "test/fp21_test_receipt_test.dart",
+      "title": "fp21_test_receipt_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "unit",
+      "behavior": "Demonstration receipt totals, paper width, EAN check digit and exact native QR target",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/fp21_test_receipt_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Layout assertions do not establish printed barcode readability.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:888f7d9d943707e34978",
+      "repository": "chimera-companion",
+      "source": "test/fp21_usb_dialog_test.dart",
+      "title": "fp21_usb_dialog_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "widget",
+      "behavior": "Device selection, status, explicit operator entry, single-flight print and recovery after an uncertain result",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/fp21_usb_dialog_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Simulated device and Android permission. Physical FP21 acceptance is tracked in the Companion checklist.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:56c728b1c8e801d0632f",
+      "repository": "chimera-companion",
+      "source": "test/fp21_usb_recovery_test.dart",
+      "title": "fp21_usb_recovery_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "An interrupted local sample requires exact journal evidence and a fresh, exclusively non-fiscal open state. Completion and uncertain recovery never replay printed merchandise.",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/fp21_usb_recovery_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Synthetic device reports; physical outcomes are documented in the implementation checklist.",
+        "Native file inventory; individual outcomes require Flutter reporter evidence."
+      ]
+    },
+    {
+      "id": "chimera-companion:ccc96b2d8f7309f10dda",
+      "repository": "chimera-companion",
+      "source": "test/fp21_usb_test.dart",
+      "title": "fp21_usb_test.dart",
+      "line": 1,
+      "discovery": "native-file",
+      "runner": "flutter",
+      "level": "integration",
+      "behavior": "Fragmented or corrupt replies, permission denial, non-fiscal test framing, durable replay after successful or partial print, and operator password exclusion from the journal",
+      "ruleIds": [],
+      "scenarioIds": [],
+      "command": "flutter test test/fp21_usb_test.dart",
+      "metadataStatus": "documented",
+      "limitations": [
+        "Simulated device and Android permission. Physical FP21 acceptance is tracked in the Companion checklist.",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -1071,13 +1208,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "integration",
+      "behavior": "Exercises receipt and terminal authorization on the signed local HTTP API, including external-card confirmation and original command recovery.",
       "ruleIds": [],
       "scenarioIds": [],
-      "command": "flutter test test/signed_http_authorization_test.dart",
-      "metadataStatus": "needs-classification",
+      "command": "flutter test --no-pub test/signed_http_authorization_test.dart",
+      "metadataStatus": "documented",
       "limitations": [
+        "Synthetic grants and register or terminal responses.",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },
@@ -1162,13 +1300,14 @@
       "line": 1,
       "discovery": "native-file",
       "runner": "flutter",
-      "level": "hardware-adapter",
-      "behavior": null,
+      "level": "integration",
+      "behavior": "Exercises signed cash/card checkout, VAT admission, refusal before payment, and original-ID recovery across two Companions for each register profile. FP21 USB and Bluetooth tests include foreign-route sale and payment proofs after restart.",
       "ruleIds": [],
       "scenarioIds": [],
-      "command": "flutter test test/two_companion_checkout_test.dart",
-      "metadataStatus": "needs-classification",
+      "command": "flutter test --no-pub test/two_companion_checkout_test.dart",
+      "metadataStatus": "documented",
       "limitations": [
+        "Loopback peers, synthetic register responses, payment and print counters.",
         "Native file inventory; individual outcomes require Flutter reporter evidence."
       ]
     },

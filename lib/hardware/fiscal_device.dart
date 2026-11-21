@@ -6,6 +6,7 @@ import 'datecs_gateway_protocol.dart';
 import 'datecs_rou_adapter.dart';
 import 'money.dart';
 import 'tcp_transport.dart';
+import 'fiscal_byte_session.dart';
 import 'tremol_adapter.dart';
 import 'command_journal.dart';
 import 'datecs_receipt_recovery.dart';
@@ -18,12 +19,12 @@ class FiscalDevice {
   Future<void> Function(Map<String,dynamic>)? receiptCheckpoint;
   Future<HardwareResult> reconcileReceipt(String commandId,Map<String,dynamic>? evidence) async {
     if(_tremol)return TremolAdapter(connection).reconcileReceipt(commandId,evidence);
-    if(['asciiMx','rouMx'].contains(evidence?['profile']))return DatecsReceiptRecovery.read(connection.endpoint,commandId,evidence);
+    if(['asciiMx','rouMx'].contains(evidence?['profile']))return DatecsReceiptRecovery.read(connection.target,commandId,evidence);
     return const HardwareResult(CommandOutcome.unknown,message:'Rezultatul Datecs necesită verificare în jurnalul electronic. Bonul nu este retrimis.');
   }
   DatecsProfile? _detectedProfile;
   String get id =>
-      '${connection.model.name}:${connection.endpoint.host}:${connection.endpoint.port}';
+      '${connection.model.name}:${connection.target.key}';
   String get name => switch (connection.model) {
     FiscalModel.tremolM20 => 'Tremol M20',
     FiscalModel.tremolFp21 => 'Tremol FP21',
@@ -38,7 +39,7 @@ class FiscalDevice {
     'saleAbandon',
     'saleExternalPaymentConfirm',
     'fiscalPolicy',
-    'settlementV2',
+    if (_tremol || (_detectedProfile ?? profile) == DatecsProfile.asciiMx) 'settlementV2',
     if(_tremol||(_detectedProfile??profile)==DatecsProfile.asciiMx) 'nonFiscalSale',
     if(connection.loyaltyPaymentCode!=null&&(_tremol||(_detectedProfile??profile)==DatecsProfile.asciiMx)) 'loyaltyPayment',
     if(_tremol) ...['buyerTaxId','cashDeposit','cashWithdraw','receiptClaimBarcode'],
@@ -53,10 +54,7 @@ class FiscalDevice {
     FiscalConnection(
       id: 'local-ecr',
       model: FiscalModel.values.byName(data['model'] as String),
-      endpoint: LanEndpoint(
-        host: data['host'] as String,
-        port: int.parse('${data['port']}'),
-      ),
+      endpoint: FiscalEndpoint.fromSettings(data),
       operatorNumber: int.parse('${data['operator']}'),
       operatorPassword: data['password'] as String,
       tcpPassword: data['tcpPassword'] as String? ?? '',
@@ -72,7 +70,7 @@ class FiscalDevice {
   Future<DeviceStatus> readStatus() async {
     if (_tremol) return TremolAdapter(connection).readStatus();
     final state = await DatecsDeviceClient(
-      connection.endpoint,
+      connection.target,
       profile: profile,
     ).inspect();
     _detectedProfile = state.profile;
@@ -139,7 +137,7 @@ class FiscalDevice {
     validateNonFiscalLines(lines);
     if (_tremol) return TremolAdapter(connection).printNonFiscal(lines);
     final state = await DatecsDeviceClient(
-      connection.endpoint,
+      connection.target,
       profile: profile,
     ).inspect();
     if (!state.ready || state.profile != DatecsProfile.asciiMx) {
@@ -148,7 +146,7 @@ class FiscalDevice {
         message: state.description,
       );
     }
-    return DatecsGatewayAdapter(connection.endpoint).printNonFiscal(lines);
+    return DatecsGatewayAdapter(connection.target).printNonFiscal(lines);
   }
 
   Future<HardwareResult> report({required bool closeDay}) async {
@@ -156,15 +154,65 @@ class FiscalDevice {
       return TremolAdapter(connection).printReport(closeDay: closeDay);
     }
     return DatecsDeviceClient(
-      connection.endpoint,
+      connection.target,
       profile: profile,
     ).printReport(closeDay: closeDay);
   }
 
-  Future<Map<String,double>> readVatRates() async {
-    if(!_tremol)throw ArgumentError('VAT rate discovery not qualified for Datecs');
-    return TremolAdapter(connection).readVatRates();
+  Future<Map<String, double>> readVatRates() async {
+    if (_tremol) return TremolAdapter(connection).readVatRates();
+    if ((_detectedProfile ?? profile) == DatecsProfile.auto) {
+      final state = await readStatus();
+      if (!state.ready) throw StateError(state.description);
+    }
+    return switch (_detectedProfile ?? profile) {
+      DatecsProfile.asciiMx => DatecsDeviceClient(
+        connection.target,
+      ).readMxVatRates(),
+      DatecsProfile.legacyRou => DatecsRouAdapter(connection).readVatRates(),
+      DatecsProfile.auto => throw StateError('Protocol Datecs neidentificat'),
+    };
   }
+
+  void validateReceipt(FiscalReceiptDraft draft) {
+    if (draft.documentMode == 'nonfiscal') {
+      if (!_tremol && (_detectedProfile ?? profile) != DatecsProfile.asciiMx) {
+        throw ArgumentError(
+          'Profilul Datecs nu poate tipări această vânzare nefiscală.',
+        );
+      }
+      _nonFiscalSaleLines(draft);
+      return;
+    }
+    if (_tremol) {
+      final driver = TremolAdapter(connection);
+      driver.prepareLines(draft);
+      driver.prepareTenders(draft);
+      return;
+    }
+    switch (_detectedProfile ?? profile) {
+      case DatecsProfile.asciiMx:
+        DatecsMxFiscalAdapter(connection).validateReceipt(draft);
+      case DatecsProfile.legacyRou:
+        DatecsRouAdapter(connection).validateReceipt(draft);
+      case DatecsProfile.auto:
+        throw StateError('Protocol Datecs neidentificat');
+    }
+  }
+
+  Map<String, Object?> receiptConfiguration(FiscalReceiptDraft draft) => {
+    'device': id,
+    if (!_tremol) 'datecsProfile': (_detectedProfile ?? profile).name,
+    'operator': connection.operatorNumber,
+    'till': connection.tillNumber,
+    if (draft.documentMode == 'fiscal') ...{
+      'vatGroups': [for (final line in draft.lines) line.vatGroup],
+      'tenderCodes': [
+        for (final tender in draft.payments)
+          connection.paymentCode(tender.method),
+      ],
+    },
+  };
 
   Future<HardwareResult> receipt(FiscalReceipt receipt) async {
     if(receipt.documentMode=='nonfiscal')return nonFiscalSale(receipt);
@@ -172,7 +220,7 @@ class FiscalDevice {
     if(!_tremol && receipt.cui!=null)return const HardwareResult(CommandOutcome.rejected,message:'CUI fiscal nu este încă implementat pentru acest model Datecs');
     if (_tremol) return TremolAdapter(connection,checkpoint:receiptCheckpoint).printReceipt(receipt);
     final state = await DatecsDeviceClient(
-      connection.endpoint,
+      connection.target,
       profile: profile,
     ).inspect();
     if (!state.ready) {
@@ -193,12 +241,30 @@ class FiscalDevice {
     }
     return DatecsMxFiscalAdapter(connection,checkpoint:receiptCheckpoint).printReceipt(receipt);
   }
+  List<String> _nonFiscalSaleLines(FiscalReceiptDraft receipt) {
+    if (receipt.cui != null) {
+      throw ArgumentError('Bonul nefiscal nu poate include CUI fiscal.');
+    }
+    final lines = <String>[
+      'DOCUMENT NEFISCAL',
+      for (final line in receipt.lines)
+        '${line.name.replaceAll(RegExp(r"[^ -~]"), "?").substring(0, line.name.length.clamp(0, 24))} x ${line.quantityDecimal}',
+      for (final line in receipt.lines)
+        '  ${minorToDecimal(line.grossTotalMinor)} RON',
+      'TOTAL ${minorToDecimal(receipt.totalMinor)} RON',
+      for (final tender in receipt.payments)
+        '${tender.method.name.toUpperCase()} ${minorToDecimal(tender.amountMinor)} RON',
+      if (receipt.claimToken != null) 'Fidelity: ${receipt.claimToken}',
+    ];
+    validateNonFiscalLines(lines);
+    return lines;
+  }
+
   Future<HardwareResult> nonFiscalSale(FiscalReceipt receipt) async {
-    final lines=<String>['DOCUMENT NEFISCAL',...receipt.lines.map((l)=>'${l.name.replaceAll(RegExp(r"[^ -~]"),"?").substring(0,l.name.length>24?24:l.name.length)} x ${l.quantityDecimal}'),...receipt.lines.map((l)=>'  ${minorToDecimal(l.grossTotalMinor)} RON'),'TOTAL ${minorToDecimal(receipt.totalMinor)} RON',...receipt.payments.map((p)=>'${p.method.name.toUpperCase()} ${minorToDecimal(p.amountMinor)} RON'),if(receipt.claimToken!=null)'Fidelity: ${receipt.claimToken}'];
-    if(lines.any((l)=>l.length>40))throw ArgumentError('Non fiscal receipt line too long');
+    final lines = _nonFiscalSaleLines(receipt);
     HardwareResult result;
     if(_tremol){result=await TremolAdapter(connection).printNonFiscal(lines);}
-    else{final state=await DatecsDeviceClient(connection.endpoint,profile:profile).inspect();if(!state.ready||state.profile!=DatecsProfile.asciiMx)return HardwareResult(CommandOutcome.rejected,message:state.description);result=await DatecsGatewayAdapter(connection.endpoint).printNonFiscal(lines,claimToken:receipt.claimToken);}
+    else{final state=await DatecsDeviceClient(connection.target,profile:profile).inspect();if(!state.ready||state.profile!=DatecsProfile.asciiMx)return HardwareResult(CommandOutcome.rejected,message:state.description);result=await DatecsGatewayAdapter(connection.target).printNonFiscal(lines,claimToken:receipt.claimToken);}
     return HardwareResult(result.outcome,reference:result.reference,message:result.message,fiscalIdentity:{...result.fiscalIdentity,'documentMode':'nonfiscal'});
   }
 
@@ -222,12 +288,19 @@ void validateNonFiscalLines(List<String> lines) {
 /// DATECS MX: common framing; Romanian 2017 and Bulgarian response schemas.
 class DatecsMxFiscalAdapter {
   DatecsMxFiscalAdapter(this.connection, {SessionFactory? sessions, this.checkpoint})
-    : _sessions = sessions ?? TcpByteSession.connect;
+    : _sessions = sessions ?? FiscalByteSession.connect;
   final FiscalConnection connection;
   final SessionFactory _sessions;
   final Future<void> Function(Map<String,dynamic>)? checkpoint;
-  Future<HardwareResult> printReceipt(FiscalReceipt receipt) async {
-    if (receipt.payments.any((p)=>!RegExp(r'^[0-5]$').hasMatch(connection.paymentCode(p.method)))) {
+  void validateReceipt(FiscalReceiptDraft receipt) {
+    if (receipt.claimToken != null || receipt.cui != null) {
+      throw ArgumentError(
+        'Datecs nu acceptă CUI sau cod de fidelitate pe acest bon fiscal.',
+      );
+    }
+    if (receipt.payments.any(
+      (p) => !RegExp(r'^[0-5]$').hasMatch(connection.paymentCode(p.method)),
+    )) {
       throw ArgumentError('Numeric Datecs MX payment code required');
     }
     for (final line in receipt.lines) {
@@ -238,13 +311,17 @@ class DatecsMxFiscalAdapter {
         throw ArgumentError('Unsupported Datecs MX line');
       }
     }
+  }
+
+  Future<HardwareResult> printReceipt(FiscalReceipt receipt) async {
+    validateReceipt(receipt);
     ByteSession? session;
     var dispatched = false;
     try {
-      session = await _sessions(connection.endpoint);
+      session = await _sessions(connection.target);
       Future<List<String>> send(int command, String payload) async {
         final seq = DatecsGatewayProtocol.nextSequence(
-          '${connection.endpoint.host}:${connection.endpoint.port}',
+          connection.target.key,
         );
         return DatecsGatewayProtocol.decode(
           await session!.exchange(

@@ -4,6 +4,7 @@ import 'connection.dart';
 import 'contracts.dart';
 import 'datecs_gateway_protocol.dart';
 import 'tcp_transport.dart';
+import 'fiscal_byte_session.dart';
 
 typedef DatecsSend = Future<List<String>> Function(int command, String payload);
 
@@ -93,7 +94,7 @@ class DatecsReceiptRecovery {
   }
 
   static Future<HardwareResult> read(
-    LanEndpoint endpoint,
+    FiscalEndpoint endpoint,
     String commandId,
     Map<String, dynamic>? evidence, {
     SessionFactory? sessions,
@@ -112,10 +113,10 @@ class DatecsReceiptRecovery {
     }
     ByteSession? session;
     try {
-      session = await (sessions ?? TcpByteSession.connect)(endpoint);
+      session = await (sessions ?? FiscalByteSession.connect)(endpoint);
       Future<List<String>> send(int command, String payload) async {
         final seq = DatecsGatewayProtocol.nextSequence(
-          '${endpoint.host}:${endpoint.port}',
+          endpoint.key,
         );
         return DatecsGatewayProtocol.decode(
           await session!.exchange(

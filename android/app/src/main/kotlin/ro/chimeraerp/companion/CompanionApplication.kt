@@ -16,6 +16,8 @@ class CompanionApplication : Application() {
     val engine: FlutterEngine by lazy {
         FlutterEngine(this).also {
             ConsoleUsb(this, it.dartExecutor.binaryMessenger)
+            Fp21Usb(this, it.dartExecutor.binaryMessenger)
+            FiscalSerialBridge(this, it.dartExecutor.binaryMessenger)
             MethodChannel(it.dartExecutor.binaryMessenger, "chimera/settings")
                 .setMethodCallHandler { call, result ->
                     if (call.method == "sdkInt") result.success(android.os.Build.VERSION.SDK_INT)
@@ -68,7 +70,7 @@ class CompanionApplication : Application() {
                 }
             MethodChannel(it.dartExecutor.binaryMessenger, "chimera/hardware/datecs_rou")
                 .setMethodCallHandler { call, result ->
-                    if (call.method !in listOf("status", "receipt", "discover", "xReport", "zReport", "networkInfo")) {
+                    if (call.method !in listOf("status", "readVatRates", "receipt", "discover", "xReport", "zReport", "networkInfo")) {
                         result.notImplemented()
                     } else {
                         hardwareWorker.execute {

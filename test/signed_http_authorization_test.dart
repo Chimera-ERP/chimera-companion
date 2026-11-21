@@ -10,6 +10,8 @@ import 'package:chimera_companion/local_bridge.dart';
 import 'package:chimera_companion/hardware/command_journal.dart';
 import 'package:chimera_companion/hardware/contracts.dart';
 import 'package:chimera_companion/hardware/fiscal_device.dart';
+import 'package:chimera_companion/hardware/connection.dart';
+import 'package:chimera_companion/hardware/datecs_device_client.dart';
 import 'package:chimera_companion/security/device_identity.dart';
 import 'package:chimera_companion/security/offline_grant.dart';
 import 'package:chimera_companion/security/offline_session.dart';
@@ -22,7 +24,10 @@ class NetworkTestBinding extends AutomatedTestWidgetsFlutterBinding {
 }
 
 class BridgeFiscalFixture extends FiscalDevice {
-  BridgeFiscalFixture() : super(fixtures.connection());
+  BridgeFiscalFixture({
+    FiscalConnection? connection,
+    DatecsProfile profile = DatecsProfile.auto,
+  }) : super(connection ?? fixtures.connection(), profile: profile);
   int prints = 0;
   bool offline = false;
   CommandOutcome outcome = CommandOutcome.succeeded;
@@ -37,7 +42,11 @@ class BridgeFiscalFixture extends FiscalDevice {
     Future<Map<String, dynamic>?> Function(String) read,
   ) async => !offline;
   @override
-  Future<Map<String, double>> readVatRates() async => {'1': 21};
+  Future<Map<String, double>> readVatRates() async {
+    if (connection.model == FiscalModel.datecsDp25) return super.readVatRates();
+    return {'A': 21};
+  }
+
   @override
   Future<HardwareResult> receipt(FiscalReceipt receipt) async {
     prints++;
@@ -280,6 +289,7 @@ void main() {
             'saleId': 'sale',
             'receiptJson': jsonEncode(facts),
             'lifecycleVersion': 1,
+            'receiptPreflightVersion': 1,
           });
           expect(authorized.$1, 200);
           expect(

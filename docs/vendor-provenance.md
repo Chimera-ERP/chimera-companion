@@ -78,6 +78,8 @@ Source: https://tremol.bg/en/support/zfplab/RO/2601151250
 Romanian protocol version: 2601151250. Downloaded 2026-09-26.
 Bundle SHA-256: `4d89f7068e055c6ecda6b9cc7275bd99cd441ffc0919defc5419ff599d871ffa`.
 
+The FP21 USB test uses the non-fiscal document commands 2Eh/37h/2Fh (sections 2.6.1, 2.6.16 and 2.6.2), and 51h/P for EAN-13 (§2.2.12). Fisco 2.0.0.53, Tremol32 DLL 1.0.0.45, uses subtype 2, declared EAN length 12 and a 100-byte data field. Its driver computes the wire length independently of the human-readable check digit. Earlier on-device attempts with length 13 returned syntax errors. ReadStatus (section 2.2.1) distinguishes a non-fiscal open document by ST2.0 and a fiscal document by ST2.1. In the same response ST0.1 reports a previous power interruption. If the 09h poll indicates ready, all other readiness checks pass and both document bits are clear, the local non-fiscal USB probe reports ready and displays the interruption as information. The USB trial can finish the recorded non-fiscal sample after the operator identifies its last printed line. A capture from vendor ZFPLabServer 1.9.6 confirms standalone CloseNonFiscalReceipt sends frame 02 23 21 2F 32 3D 0A at sequence 21h. A2 denotes a missing customer display and an illegal command. The direct maintenance actions use 2Fh for an open non-fiscal document and the separate no-argument CutPaper command 29h. Both read the live status before acting. The bundle re-downloaded from the supplied RO 2601151250 page matches the recorded SHA-256. Its 230 unique command definitions include PrintBarcode and two QR-related server configuration operations, ReadQRserverAddress and SetQRserverAddress (§§2.11.17 and 2.11.38). It has no command definition to print an arbitrary QR payload. The [Bulgarian Tremol protocol 2608251115](https://tremol.bg/en/support/zfplab/bg/2608251115) §2.2.13 documents 51h/C for a native QR with a resolution digit and variable-length data. The QR-only USB trial sends the captured ZFPLab wire format, resolution 4 and https://chimeraerp.ro in a 200-byte space-padded field. The BG PDF describes variable-length data, and the earlier unpadded trial on the Romanian printer produced no QR. An optical scan must confirm the encoded content if the printer accepts the command. QR support depends on the attached firmware. The [Fisco manual](https://fisco.ro/manual-fisco/) lists text fallback for QR on Tremol. Companion records each symbol response independently.
+
 Portable implementation follows framing, ACK/checksum and commands 20h, 30h,
 31h (specified VAT), 33h (subtotal), 35h, 38h and 71h. No vendor source is copied.
 Only ordinary positive-quantity sales are supported; adjustments/returns and
@@ -97,6 +99,14 @@ EJ stream through `RawRead(0,"@")`. Our bounded framed-stream parser is independ
 no Tremol runtime is imported. This readback and the additional receipt text markers
 require physical M20/FP21 qualification before treating them as production-supported.
 
+## Android fiscal USB and Bluetooth
+
+An unfiscalized Romanian Activa FP21 running `2.00TRP21_AC` returned a valid 60h data frame containing exactly two ASCII letters and eight decimal digits for its factory serial. The length on this unit was ten bytes, while RO 2601151250 §2.5.1 specifies eleven. The frame checksum, sequence and echoed command were verified on USB on 2026-11-20.
+
+The same FP21 reported BT support in `4Eh R;D;S`, echoed `R;D;S` for `R;D;D`, and returned a distinct radio state for `R;B;S`. RO §2.11.13 and §2.11.36 document the status query and explicit enable operation. Companion checks the echoed fields, requires a separate valid radio response, and uses Android for bonding.
+
+The FP21 manufacturer lists USB and Bluetooth. The Romanian DP-25 MX catalog lists both interfaces and provides the Windows USB package containing FTDI CDM 2.12.36.4. Android uses CDC ACM (including the FP21 STM32 virtual COM interface) or a single-channel FTDI FT232B/R or FT-X UART. The FTDI reader strips two modem status bytes per USB packet and checks line errors. Bluetooth uses the standard Classic serial port service on a paired register. An individual firmware and module combination still needs a hardware trial. [Tremol FP21](https://tremol.bg/en/product/tremol-fp21) · [Datecs DP-25 MX and USB driver](https://www.datecs.ro/casa-de-marcat-datecs-dp-25-mx.html) · [Android USB host](https://developer.android.com/develop/connectivity/usb/host) · [Android Bluetooth permissions](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions)
+
 ## Datecs Romania SDK
 
 Official DP-25 downloads: https://www.datecs.bg/en/products/162
@@ -105,10 +115,7 @@ Bundle SHA-256: `6de1b55e90d58cd79e1bfcff7e521aa4652668fc2f7cd27bc71a92fa306a173
 Bundled, unmodified JAR: `android/app/libs/datecs-rou-1.0.8.jar`.
 JAR SHA-256: `e68af325c6ea5c511cf3c167629a3abc85a52565da6573514c7e16202d538d6c`.
 
-Native Kotlin bridge wraps `DP25ROU` with socket streams, status queries,
-48/49/51/53/56 receipt operations. The SDK owns low-level protocol behavior,
-including any internal retry policy; Companion never retries an entire receipt.
-This older vendor SDK must be qualified against the actual production firmware.
+The Kotlin bridge uses the same `DP25ROU` status, VAT, receipt (48/49/51/53/56) and X/Z routines on LAN and on explicitly selected Android USB or Bluetooth transports. Constructor detection reads 90/1 and exposes the manufacturer serial through `getSerialNumber()`. A USB checkout verifies that identity on its selected open handle before issuing the sale. In SDK 1.0.8, `FPBase.writePacket` can send the same packet up to three times after a NAK. Companion’s serial transport stops the exchange at the first NAK, timeout or mismatched reply and provides the SDK only the response for the original command. Vendor status and checksum checks still run. Existing LAN sessions use the SDK’s socket behavior. Physical qualification is required for each firmware and port.
 Confirm vendor redistribution/license conditions before distributing the APK.
 
 ## Existing Chimera gateway
@@ -144,6 +151,17 @@ same bundle. No DUDE executable was run or bundled; no new vendor library added.
 The current Romanian DP-25mx uses MX framing, not the 2014 DP25ROU binary SDK.
 Recovery is tested with synthetic framed replies and durable journal restarts;
 physical firmware qualification remains pending.
+
+Receipt preflight reads Romanian MX command 50 with no parameters. The response
+contains the first Z number, seven rates (A–G) and a timestamp. Values 100.00
+(exempt), 100.01 (other taxes) and 100.02 (inactive) have no percentage mapping.
+On legacy DP25ROU the official SDK documents the argument-free
+`command83Variant1Version0()` as the current-configuration read. It returns
+`outputEnabledTaxesArray`, a four-bit A–D enable mask, and the configured rates.
+Only enabled groups with a documented mapping and two-decimal configuration
+participate. The parameterized programming variant is never used by checkout.
+The two layouts are tested with synthetic device data. Fiscal qualification of
+these reads and of the ensuing receipts is still required on each firmware.
 
 Datecs ASCII-MX EJ recovery uses the primary protocol reference
 https://www.datecs.bg/en/downloads/pdf?id=PM_FMP350X_FMP55X_FP700X-BUL_+FPprotocol_v2.00_eng.pdf

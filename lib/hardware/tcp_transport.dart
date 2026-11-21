@@ -10,7 +10,7 @@ abstract interface class ByteSession {
   Future<void> close();
 }
 
-typedef SessionFactory = Future<ByteSession> Function(LanEndpoint endpoint);
+typedef SessionFactory = Future<ByteSession> Function(FiscalEndpoint endpoint);
 
 /// One command in flight, bounded buffering and no automatic retry. The caller
 /// treats any lost response after dispatch as an unknown hardware outcome.

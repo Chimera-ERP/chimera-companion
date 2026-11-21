@@ -3,10 +3,15 @@ import 'dart:io';
 import 'package:crypto/crypto.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter/services.dart';
 import 'package:chimera_companion/local_bridge.dart';
 import 'package:chimera_companion/local_server.dart';
 import 'package:chimera_companion/hardware/command_journal.dart';
 import 'package:chimera_companion/hardware/contracts.dart';
+import 'package:chimera_companion/hardware/connection.dart';
+import 'package:chimera_companion/hardware/datecs_device_client.dart';
+import 'package:chimera_companion/hardware/datecs_gateway_protocol.dart';
+import 'datecs_device_client_test.dart' as datecs;
 import 'package:chimera_companion/security/offline_session.dart';
 import 'signed_http_authorization_test.dart'
     show SigningFixture, NetworkTestBinding, BridgeFiscalFixture;
@@ -234,34 +239,95 @@ void main() {
       }
     } finally {await fiscal.close();await tls.directory.delete(recursive:true);}
   });
-  for (final outcome in [
-    CommandOutcome.succeeded,
-    CommandOutcome.rejected,
-    CommandOutcome.unknown,
+  for (final (model, profile, outcome, transport) in [
+    (FiscalModel.tremolM20, DatecsProfile.auto, CommandOutcome.succeeded, 'lan'),
+    (FiscalModel.tremolFp21, DatecsProfile.auto, CommandOutcome.succeeded, 'lan'),
+    (FiscalModel.datecsDp25, DatecsProfile.asciiMx, CommandOutcome.succeeded, 'lan'),
+    (FiscalModel.datecsDp25, DatecsProfile.legacyRou, CommandOutcome.succeeded, 'lan'),
+    (FiscalModel.tremolM20, DatecsProfile.auto, CommandOutcome.rejected, 'lan'),
+    (FiscalModel.tremolM20, DatecsProfile.auto, CommandOutcome.unknown, 'lan'),
+    (FiscalModel.tremolFp21, DatecsProfile.auto, CommandOutcome.succeeded, 'usb'),
+    (FiscalModel.tremolFp21, DatecsProfile.auto, CommandOutcome.succeeded, 'bluetooth'),
   ]) {
     test(
-      'two signed Companion peers preserve ${outcome.name} bank result across restart',
+      'signed checkout with ${model.name}/${profile.name} on $transport preserves ${outcome.name} across restart',
       () async {
         final tls = await TlsFixture.create();
+        final authority = SigningFixture(27),
+            pos = SigningFixture(28),
+            ecrKey = SigningFixture(29),
+            terminalKey = SigningFixture(30);
+        final terminal = PaymentFixture(outcome);
+        final datecsServer = profile == DatecsProfile.asciiMx
+            ? await ServerSocket.bind(InternetAddress.loopbackIPv4, 0)
+            : null;
+        addTearDown(() => datecsServer?.close());
+        final wire = datecs.Peer();
+        datecsServer?.listen((socket) {
+          final buffer = <int>[];
+          socket.listen((chunk) async {
+            buffer.addAll(chunk);
+            final length = DatecsGatewayProtocol.frameLength(buffer);
+            if (length == null || buffer.length < length) return;
+            final request = buffer.sublist(0, length);
+            buffer.removeRange(0, length);
+            socket.add(
+              await wire.exchange(request, DatecsGatewayProtocol.frameLength),
+            );
+          }, onDone: socket.destroy);
+        });
+        final legacy = profile == DatecsProfile.legacyRou;
+        if (legacy) {
+          const channel = MethodChannel('chimera/hardware/datecs_rou');
+          final messenger =
+              TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+          messenger.setMockMethodCallHandler(channel, (call) async {
+            expect(call.method, 'readVatRates');
+            return {
+              'enabled': '1100',
+              'decimals': '2',
+              'rates': ['21.00', '11.00', '0.00', '0.00'],
+            };
+          });
+          addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+        }
+        final endpoint = switch (transport) {
+          'usb' => FiscalSerialEndpoint(transport: 'usb', deviceId: 'a' * 64, model: model),
+          'bluetooth' => FiscalSerialEndpoint(transport: 'bluetooth', deviceId: 'AA:BB:CC:DD:EE:01', model: model),
+          _ => LanEndpoint(host:'127.0.0.1',port: datecsServer?.port ?? 9100),
+        };
+        final (address, port) = switch (endpoint) {
+          LanEndpoint(:final host, :final port) => (host, port),
+          FiscalSerialEndpoint() => (endpoint.key, 0),
+        };
+        final ecr = BridgeFiscalFixture(
+          profile: profile,
+          connection: FiscalConnection(
+            id: 'ecr',
+            model: model,
+            endpoint: endpoint,
+            operatorNumber: 1,
+            operatorPassword: '1234',
+            cashPaymentCode: legacy ? 'P' : '0',
+            cardPaymentCode: legacy ? 'D' : '1',
+          ),
+        );
         FlutterSecureStorage.setMockInitialValues({
           'local_hardware_v1': jsonEncode({
-            'host': '192.168.1.20',
+            'transport': transport,
+            if (endpoint is FiscalSerialEndpoint) 'deviceId': endpoint.deviceId,
+            if (endpoint is LanEndpoint) ...{'host': address, 'port': port.toString()},
             'vivaEnabled': 'true',
             'vivaHost': '127.0.0.1',
             'vivaPort': '9564',
           }),
         });
-        final authority = SigningFixture(27),
-            pos = SigningFixture(28),
-            ecrKey = SigningFixture(29),
-            terminalKey = SigningFixture(30);
-        final ecr = BridgeFiscalFixture(), terminal = PaymentFixture(outcome);
         final equipment = [
           {
             'kind': 'ecr',
             'companion_id': 'ecr',
-            'host': '192.168.1.20',
-            'port': 9100,
+            'host': address,
+            'port': port,
             'public_jwk': ecrKey.jwk,
           },
           {
@@ -308,12 +374,61 @@ void main() {
               },
             ],
           };
+          for (final method in ['cash', 'card']) {
+            final invalidId = 'bad-vat-$method';
+            final unsupported = {
+              ...facts,
+              'paymentMethod': method,
+              'lines': [
+                {...(facts['lines'] as List).single as Map, 'vatRate': 77},
+              ],
+            };
+            final refused = await fiscal.command('saleAuthorize', invalidId, {
+              'saleId': invalidId,
+              'receiptJson': jsonEncode(unsupported),
+              'receiptPreflightVersion': 1,
+              'lifecycleVersion': 1,
+            });
+            expect(refused.$1, 200);
+            expect(jsonDecode(refused.$2['resultJson'])['outcome'], 'rejected');
+            if (method == 'card') {
+              final denied = await bank.command('payment', paymentId, {
+                'saleId': invalidId,
+                'amountMinor': 500,
+                'currency': 'RON',
+                'receiptCommandId': invalidId,
+                'receiptCompanionId': 'ecr',
+                'saleAuthorization': refused.$2,
+              });
+              expect(denied.$1, 403);
+            }
+            expect(terminal.calls, 0);
+            expect(ecr.prints, 0);
+          }
+          if (datecsServer != null) expect(wire.requests, isNotEmpty);
           final admission = await fiscal.command('saleAuthorize', 'sale', {
             'saleId': 'sale',
             'receiptJson': jsonEncode(facts),
             'lifecycleVersion': 1,
+            'receiptPreflightVersion': 1,
           });
           expect(admission.$1, 200);
+          if (transport != 'lan') {
+            final previousKey = 'sale_admission_${CommandJournal.fingerprint('old-route','saleAuthorize',{'id':'original-sale'})}';
+            await const FlutterSecureStorage().write(key:previousKey,value:jsonEncode({
+              'saleId':'original-sale','equipmentId':'old-route','phase':'payment_started',
+            }));
+            await fiscal.restartBridge();
+            final prior = await fiscal.command('saleAuthorize','original-sale',{
+              'saleId':'original-sale','receiptJson':jsonEncode(facts),'lifecycleVersion':1,'receiptPreflightVersion':1,
+            });
+            expect(jsonDecode(prior.$2['resultJson'])['outcome'],'rejected');
+            expect(terminal.calls,0);
+            expect(ecr.prints,0);
+            final foreign = await fiscal.bridge.run('zReport','foreign-write',{'confirmCloseDay': true},
+                expectedEndpoint: '192.168.1.20:9100');
+            expect(foreign['outcome'],'rejected');
+          }
           final paymentPayload = <String, dynamic>{
             'saleId': 'sale',
             'amountMinor': 500,
@@ -327,14 +442,73 @@ void main() {
             403,
           );
           expect(terminal.calls, 0);
+          // A pre-upgrade ECR could sign a legitimate admission without ever
+          // checking its register. Such proof is only usable for journal lookup.
+          final legacyResult = jsonDecode(admission.$2['resultJson']);
+          (legacyResult['saleAdmission'] as Map)
+            ..remove('receiptPreflightVersion')
+            ..remove('receiptConfigurationHash');
+          final legacyJson = jsonEncode(legacyResult);
+          final legacyPayload = {
+            ...paymentPayload,
+            'saleAuthorization': {
+              'resultJson': legacyJson,
+              'signature': ecrKey.signature(legacyJson),
+            },
+          };
+          final missing = await bank.command('payment', paymentId, {
+            ...legacyPayload,
+            'recoveryOnly': true,
+          });
+          expect(jsonDecode(missing.$2['resultJson'])['outcome'], 'unknown');
+          expect(
+            (await bank.command('payment', paymentId, legacyPayload)).$1,
+            403,
+          );
+          expect(terminal.calls, 0);
+          if (datecsServer != null) {
+            final originalVat = wire.vatResponse;
+            wire.vatResponse = originalVat.replaceFirst(
+              '21.00\t11.00',
+              '11.00\t21.00',
+            );
+            final changed = await fiscal
+                .command('salePaymentStart', paymentId, {
+                  'saleId': 'sale',
+                  'amountMinor': 500,
+                  'currency': 'RON',
+                  'paymentCompanion': 'terminal',
+                  'receiptJson': jsonEncode(facts),
+                });
+            expect(
+              changed.$1,
+              403,
+              reason: 'The same rate now belongs to another physical VAT group',
+            );
+            expect(terminal.calls, 0);
+            expect(ecr.prints, 0);
+            wire.vatResponse = originalVat;
+          }
           final started = await fiscal.command('salePaymentStart', paymentId, {
             'saleId': 'sale',
             'amountMinor': 500,
             'currency': 'RON',
             'paymentCompanion': 'terminal',
+            'receiptJson': jsonEncode(facts),
           });
           expect(started.$1, 200);
           paymentPayload['paymentAuthorization'] = started.$2;
+          if (transport != 'lan') {
+            final old = jsonDecode(started.$2['resultJson']);
+            old['paymentAdmission']['equipmentId'] = 'tremolFp21:192.168.1.20:9100';
+            final oldJson = jsonEncode(old);
+            final stale = await bank.command('payment', paymentId, {
+              ...paymentPayload,
+              'paymentAuthorization': {'resultJson': oldJson, 'signature': await ecrKey.sign(oldJson)},
+            });
+            expect(stale.$1, 403);
+            expect(terminal.calls, 0);
+          }
           final paid = await bank.command('payment', paymentId, paymentPayload);
           expect(paid.$1, 200);
           final paymentResult = jsonDecode(paid.$2['resultJson']) as Map;
@@ -369,6 +543,15 @@ void main() {
           );
           expect(terminal.calls, 1);
           if (outcome == CommandOutcome.succeeded) {
+            final legacyRecovery = await bank.command('payment', paymentId, {
+              ...legacyPayload,
+              'recoveryOnly': true,
+            });
+            expect(
+              jsonDecode(legacyRecovery.$2['resultJson'])['reference'],
+              'synthetic-bank-reference',
+            );
+            expect(terminal.calls, 1);
             expect(
               (await fiscal.command('salePaymentReject', 'release-paid', {
                 'saleId': 'sale',
@@ -415,6 +598,30 @@ void main() {
             expect(repeat.$1, 200);
             expect(jsonDecode(repeat.$2['resultJson'])['outcome'], 'succeeded');
             expect(ecr.prints, 1);
+            expect(terminal.calls, 1);
+            ecr.offline = false;
+            final cashFacts = {...facts, 'paymentMethod': 'cash'};
+            final cash = await fiscal.command('saleAuthorize', 'cash-sale', {
+              'saleId': 'cash-sale',
+              'receiptJson': jsonEncode(cashFacts),
+              'receiptPreflightVersion': 1,
+              'lifecycleVersion': 1,
+            });
+            expect(jsonDecode(cash.$2['resultJson'])['outcome'], 'succeeded');
+            final cashReceipt = await fiscal.command(
+              'fiscalReceipt',
+              'cash-sale',
+              {
+                ...cashFacts,
+                'saleId': 'cash-sale',
+                'saleAuthorization': cash.$2,
+              },
+            );
+            expect(
+              jsonDecode(cashReceipt.$2['resultJson'])['outcome'],
+              'succeeded',
+            );
+            expect(ecr.prints, 2);
             expect(terminal.calls, 1);
           } else {
             final released = await fiscal.command(

@@ -1,5 +1,103 @@
 # Chimera Companion — implementation status
 
+For the current POS integration and iMin hardware acceptance, use the [cross-repository fiscal checklist](https://github.com/Chimera-ERP/chimera/blob/main/docs/companion-production-checklist.md#android-usb-and-bluetooth-checkout-2026-11-20). The dated trial below records the earlier diagnostic app.
+
+## Activa FP21 USB trial — 2026-11-19
+
+- [x] Android setup and the existing fiscal device screen expose a local USB status
+  probe. Companion lists single-port CDC ACM candidates, asks for Android USB
+  permission and sends a Tremol readiness poll and ReadStatus on the selected
+  attachment. Seven status bytes and a matching sequence/checksum establish a
+  protocol reply. The reported ECR state can still require operator attention.
+- [x] The existing Flutter dialog, progressive disclosure and an explicit read
+  action keep LAN setup and the USB trial independently usable. Widget trials at
+  360×640 and 1280×800 covered navigation, selection, denial/retry, disconnect
+  and a valid reply while the printer was not ready. Focused transport regression
+  covers fragmentation, corrupted frames, fresh sequence on a later read and
+  denial without sending bytes. Screenshots are in the local quality receipts.
+- [x] The Swan 2 (I24D02) enumerated the attached FP21 as a CDC ACM device
+  (0483:5740). The Companion USB dialog on the physical terminal
+  reported “Imprimanta a răspuns prin USB. Tremol pregătit”.
+- [x] The trial offers one explicitly requested non-fiscal print after a ready
+  response, using the operator number and password entered on the terminal.
+  The deterministic sample contains eight products, quantities, a simulated
+  total of 168.30 RON, one EAN-13 and a reserved Fidelity QR area. The sample
+  uses the existing Tremol wire protocol and durable command journal.
+- [x] Installed the trial APK on the Swan 2 with its existing signature; the
+  installed and local SHA-256 were both
+  `b8335e3d325e1a35ba4dc944f2abe1e744aa37e093f4399e8f1deb0cabfcbed7`.
+  Verified the normal PIN → USB → Citește starea path displayed both ready
+  status and the test print action. Flutter analysis passed along with 71
+  focused tests. The platform status and explicit print handles were separately
+  checked for allowed frames and sequence validation.
+- [x] The operator verified that the existing sample stops at the barcode label.
+  On the same FP21, USB ReadStatus returned `80 80 81 d0 a9 80 80`: only
+  the non-fiscal document is open; the printer reports a missing external
+  customer display. The original barcode was explicitly refused with 64.
+  The documented 100-byte ZFPLab barcode field was also refused on this device
+  with A4. Physical bars and QR footer remain unverified.
+- [x] The independent close action issues only 2Fh and reads 20h before and
+  after it. The user chose to close only. The actual FP21 replied A2 (missing
+  customer display / illegal command) and still reported non-fiscal open.
+  Journalled ambiguous closes suppress a duplicate. After this explicit A2
+  a newly detected display permits another deliberate close of this same sample.
+- [x] The user reconnected the same unit. Android reassigned its USB address.
+  ReadStatus then returned `82 80 81 d0 a1 80 80`: the display fault cleared,
+  the power-interruption flag was set and the non-fiscal document remained
+  open. The USB dialog now has direct, independent close and paper-cut
+  actions for the selected attachment. A close can handle this latched
+  power flag, and it confirms document state after 2Fh.
+- [x] The operator confirmed the reattached printer and existing slip. Installed
+  the two-button trial (local and installed SHA-256
+  `1b0ae2f4c0b817078d87e4714d8fb8a9c963136a318337e55b89ec54404dc1e6`).
+  A single tap on **Închide forțat bonul** closed that open document.
+  Subsequent live verification inside the action reported that the FP21
+  had no open document. The independent **Taie hârtia** button was visible;
+  no separate 29h cutter command was sent to the hardware.
+- [x] Corrected the local non-fiscal USB status for the reported post-close
+  response `82 80 80 d0 a1 80 80`. With a ready 09h poll and both receipt
+  bits clear, the dialog shows readiness and the earlier power interruption.
+  Installed APK SHA-256
+  `7409f2a65a0701211d8360b37caba0cb8048cf1454673c0a8cff0e513e64bf07`
+  on the Swan 2. On the actual USB printer **Citește starea** confirmed readiness
+  for the non-fiscal test, no open receipt and the previous interruption.
+  Only the read action was exercised. Flutter analysis, the Companion quality
+  check and all 77 focused tests passed.
+- [x] Replaced the text fallback and empty QR box with two native 51h
+  print requests. The EAN uses 12 data digits for 2000000000015.
+  The QR data is exactly https://chimeraerp.ro. A new sample records both
+  symbol outcomes, and a lost reply never replays the symbols. Kept the
+  same print action and status region at both widget test sizes.
+- [x] The USB trial on the Swan 2 reached the QR step but did not confirm it.
+  The response shown by the trial build did not distinguish the earlier
+  EAN ACK from a definite EAN refusal. Independently read the open non-fiscal
+  status, sent the explicit close once, and verified that the slip was closed.
+  The subsequent APK also displays the preceding symbol outcome on an
+  interrupted print and reads firmware with 21h in the normal status dialog.
+  Installed artifact SHA-256
+  `eda2b562e4e347cdc29899e7efc07ded35ef370a8d0793147f895f4efa89d28a`.
+  The physical device reported `Version 2.00TRP21_AC` and no open document.
+  Flutter analysis, 81 targeted Flutter tests and native USB tests passed.
+- [x] The operator inspected the slip and confirmed visible EAN bars and no QR.
+  Added a one-symbol USB trial using the original SDK frame with its 200-byte
+  data field after an idle status. The isolated trial journals each attempt,
+  opens no receipt and captures the bounded USB reply for this command.
+- [x] On the attached FP21, the standalone test sent all 211 bytes of the
+  SDK-formatted command. No reply bytes arrived during the 8 s USB read.
+  The subsequent independent status poll returned ready, both document bits
+  clear, firmware `Version 2.00TRP21_AC`. This trial did not open a receipt.
+  A QR read timeout during a long sample now allows only an immediate,
+  status-guarded non-fiscal close on the original attachment; the QR outcome
+  remains unknown. That recovery was exercised with simulated replies.
+  Passed 101 Flutter tests, 16 native USB tests and the Companion quality check.
+  Installed the QR recovery APK on the Swan 2; local SHA-256
+  `3abfa366879f943f44277a37338f915395c1ec7626a529710a6c5420fb37ca7d`.
+- [ ] Verify the EAN and URL from a scan of the actual paper. The native
+  custom QR command documented for Bulgaria is unqualified on this RO firmware.
+- [ ] Run the LAN status check once the network address and port of this FP21
+  have been identified. APK for this trial is local. No fiscal document is required.
+
+
 ## Companion onboarding and motion — 2026-11-05
 
 Implemented in Companion; Rive source upload/export was explicitly authorized

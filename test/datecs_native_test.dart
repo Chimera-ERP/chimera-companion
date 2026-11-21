@@ -1,4 +1,8 @@
+import 'dart:io';
 import 'package:flutter/services.dart';
+import 'package:chimera_companion/hardware/fiscal_device.dart';
+import 'package:chimera_companion/hardware/datecs_gateway_protocol.dart';
+import 'datecs_device_client_test.dart' show Peer;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:chimera_companion/hardware/contracts.dart';
 import 'package:chimera_companion/hardware/connection.dart';
@@ -50,6 +54,94 @@ void main() {
       expect(sent!.arguments, {'host': '192.168.1.25', 'port': 9100});
     },
   );
+  test(
+    'legacy read-only VAT discovery uses only enabled documented groups',
+    () async {
+      final calls = <MethodCall>[];
+      var mask = '1010';
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            calls.add(call);
+            return {
+              'enabled': mask,
+              'decimals': '2',
+              'rates': ['21.00', '21.00', '0.00', '11.00'],
+            };
+          });
+      final device = DatecsRouAdapter(connection);
+      expect(await device.readVatRates(), {'A': 21, 'C': 0});
+      expect(calls.single.method, 'readVatRates');
+      expect(calls.single.arguments, connection.endpoint.toJson());
+      mask = '10x0';
+      await expectLater(device.readVatRates(), throwsFormatException);
+    },
+  );
+
+  for (final legacy in [false, true]) {
+    test(
+      'auto detection exposes capabilities and reads VAT from the detected ${legacy ? "legacy" : "MX"} profile',
+      () async {
+        final peer = Peer();
+        final listener = await ServerSocket.bind(
+          InternetAddress.loopbackIPv4,
+          0,
+        );
+        addTearDown(listener.close);
+        listener.listen((socket) async {
+          final buffer = <int>[];
+          try {
+            await for (final chunk in socket) {
+              buffer.addAll(chunk);
+              final length = DatecsGatewayProtocol.frameLength(buffer);
+              if (length == null || buffer.length < length) continue;
+              final response = legacy
+                  ? [0]
+                  : await peer.exchange(buffer, (_) => null);
+              socket.add(response);
+              await socket.flush();
+              break;
+            }
+          } finally {
+            await socket.close();
+          }
+        });
+        final nativeCalls = <String>[];
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(channel, (call) async {
+              nativeCalls.add(call.method);
+              return switch (call.method) {
+                'status' => {'protocolConfirmed': true, 'ready': true},
+                'readVatRates' => {
+                  'enabled': '1000',
+                  'decimals': '2',
+                  'rates': ['11', '21', '0', '0'],
+                },
+                _ => throw StateError('Unexpected native call'),
+              };
+            });
+        final device = FiscalDevice(
+          FiscalConnection(
+            id: 'local',
+            model: FiscalModel.datecsDp25,
+            endpoint: LanEndpoint(host: '127.0.0.1', port: listener.port),
+            operatorNumber: 1,
+            operatorPassword: '1234',
+            cashPaymentCode: legacy ? 'P' : '0',
+            cardPaymentCode: legacy ? 'D' : '1',
+          ),
+        );
+        expect(device.capabilities, isNot(contains('settlementV2')));
+        expect((await device.readStatus()).ready, isTrue);
+        expect(device.capabilities.contains('settlementV2'), !legacy);
+        expect(
+          await device.readVatRates(),
+          legacy ? {'A': 11} : {'A': 21, 'B': 11, 'C': 0},
+        );
+        expect(nativeCalls, legacy ? ['status', 'readVatRates'] : isEmpty);
+      },
+    );
+  }
+
   test('Lost X reply is unknown and not retried', () async {
     var calls = 0;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

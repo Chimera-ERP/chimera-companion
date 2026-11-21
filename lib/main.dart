@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:async';
 import 'dart:ui';
+import 'package:flutter/foundation.dart' show defaultTargetPlatform, kIsWeb;
 import 'package:flutter/material.dart';
+import 'fp21_usb_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:forui/forui.dart';
@@ -411,16 +413,24 @@ class _CompanionHomeState extends State<CompanionHome> {
             ),
             _row(
               'Configurează casa',
-              'Adresă și operator',
+              'Conexiune și operator',
               Icons.settings_outlined,
               () => _open(
                 DeviceSetupPage(
                   initialStep: 2,
+                  editRegister: true,
                   scales: _bridge.scales,
                   console: _bridge.console,
                 ),
               ),
             ),
+            if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+              _row(
+                'Diagnostic USB FP21',
+                'Citește starea imprimantei',
+                Icons.usb,
+                () => showFp21UsbDialog(context),
+              ),
           ],
         ),
         const SizedBox(height: 24),

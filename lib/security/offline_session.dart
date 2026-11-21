@@ -704,7 +704,7 @@ class OfflineSession {
         'Trusted payment-start authorization required',
       );
     }
-    return verifySaleAdmission(
+    final admission = verifySaleAdmission(
       proof: proof,
       org: org,
       location: location,
@@ -724,6 +724,15 @@ class OfflineSession {
         signature,
       ),
     );
+    if (admission['receiptPreflightVersion'] == 1) {
+      final endpoint = owner['port'] == 0 ? owner['host'] : "${owner['host']}:${owner['port']}";
+      final equipment = admission['equipmentId'];
+      final separator = equipment is String ? equipment.indexOf(':') : -1;
+      if (separator < 1 || equipment.substring(separator + 1) != endpoint) {
+        throw const FormatException('Payment authorization targets a different fiscal connection');
+      }
+    }
+    return admission;
   }
 
   String verifyPayment(

@@ -55,7 +55,7 @@ object DatecsRouBridge {
         } finally { executor.shutdownNow() }
     }
 
-    fun execute(method: String, args: Map<*, *>): Map<String, Any?> {
+    private fun lanSocket(method: String, args: Map<*, *>): Socket {
         val host = args["host"] as String
         val parts = host.split('.').map { it.toInt() }
         require(parts.size == 4 && parts.all { it in 0..255 })
@@ -63,15 +63,42 @@ object DatecsRouBridge {
             (parts[0] == 172 && parts[1] in 16..31))
         val port = (args["port"] as Number).toInt()
         require(port in 1..65535)
-        val socket = Socket()
+        return Socket().also { socket ->
+            try {
+                socket.soTimeout = if (method == "status") 2000 else 15000
+                socket.connect(InetSocketAddress(host, port), 5000)
+            } catch (e: Exception) { socket.close(); throw e }
+        }
+    }
+
+    fun execute(method: String, args: Map<*, *>): Map<String, Any?> = run(method, args, null)
+
+    internal fun executeSerial(method: String, args: Map<*, *>, link: FiscalStream): Map<String, Any?> =
+        DatecsSdkPort(link, if (method == "status" || method == "identity") 3000 else 15000).use { port ->
+            run(method, args, port)
+        }
+
+    private fun run(method: String, args: Map<*, *>, serial: DatecsSdkPort?): Map<String, Any?> {
+        var socket: Socket? = null
         var printer: DP25ROU? = null
         var dispatched = false
-        var stage = "conectare TCP"
+        var stage = "conectare"
         try {
-            socket.soTimeout = if (method == "status") 2000 else 15000
-            socket.connect(InetSocketAddress(host, port), 5000)
-            val device = DP25ROU(socket.getInputStream(), socket.getOutputStream())
+            val device = if (serial == null) {
+                val lan = lanSocket(method, args)
+                socket = lan
+                DP25ROU(lan.getInputStream(), lan.getOutputStream())
+            } else DP25ROU(serial.input, serial.output)
             printer = device
+            if (serial != null) {
+                stage = "identificare"
+                require(device.modelType == 100001 && Regex("(?i)^DP[- ]?25[A-Z0-9._-]*$").matches(device.deviceName.orEmpty())) {
+                    "Modelul detectat nu este un Datecs DP-25 ROU."
+                }
+                val key = DatecsSdkPort.identity(device.serialNumber)
+                if (method == "identity") return mapOf("identity" to key)
+                if (args["transport"] == "usb") require(key == args["id"]) { "Casa USB a fost schimbată." }
+            }
             stage = "citire stare"
             device.queryStatus() // SDK performs the Romanian error/status checks.
             val current = device.command76Variant0Version0()
@@ -80,10 +107,18 @@ object DatecsRouBridge {
                 "protocolConfirmed" to true,
                 "description" to if (ready) "Datecs pregătit" else "Datecs are un document deschis")
             if (!ready) return mapOf("outcome" to "rejected", "message" to "Document deschis pe Datecs")
+            if (method == "readVatRates") {
+                // The SDK's no-argument variant only reads configuration. Its documented
+                // enable mask identifies A–D; never infer a rate from an unqualified slot.
+                val config = device.command83Variant1Version0()
+                return mapOf("enabled" to config.get("outputEnabledTaxesArray")?.trim(),
+                    "decimals" to config.get("outputDecimals")?.trim(),
+                    "rates" to ('A'..'D').map { config.get("outputTax$it")?.trim() })
+            }
             if (method == "xReport" || method == "zReport") {
                 // 69 / option 2 is X. No caller-controlled report option can request Z.
                 dispatched = true
-                stage = "tipărire raport X"
+                stage = if (method == "zReport") "tipărire raport Z" else "tipărire raport X"
                 device.command69Variant0Version0(if (method == "zReport") "0" else "2")
                 return mapOf("outcome" to "succeeded", "message" to if (method == "zReport") "Raport Z confirmat de Datecs." else "Raport X confirmat de Datecs. Ziua rămâne deschisă.")
             }
@@ -115,16 +150,21 @@ object DatecsRouBridge {
             }
             require(sum == total)
             dispatched = true
+            stage = "deschidere bon"
             device.command48Variant0Version0(operator, password, till)
+            stage = "înregistrare articole"
             for (raw in lines) {
                 val line = raw as Map<*, *>
                 device.command49Variant0Version14(line["name"] as String, "", line["vatGroup"] as String,
                     BigDecimal.valueOf((line["unitPriceMinor"] as Number).toLong(), 2).toPlainString(), line["quantity"] as String)
             }
+            stage = "subtotal"
             val subtotal = device.command51Variant0Version0().get("subTotal")
             require(BigDecimal(subtotal.trim()).movePointRight(2).longValueExact() == total)
+            stage = "înregistrare plată"
             val payment = device.command53Variant0Version0(paymentCode, BigDecimal.valueOf(total, 2).toPlainString())
             require(payment.get("paidCode") == "R" && BigDecimal(payment.get("amountOut").trim()).compareTo(BigDecimal.ZERO) == 0)
+            stage = "închidere bon"
             val closed = device.command56Variant0Version0()
             val number = closed.get("fiscalReceipt")
             require(!number.isNullOrBlank())
@@ -142,7 +182,7 @@ object DatecsRouBridge {
                 "message" to if (dispatched) "Datecs: $stage — $reason. Rezultat incert; verifică documentul pe ECR." else "Datecs: $stage — $reason")
         } finally {
             printer?.close()
-            socket.close()
+            socket?.close()
         }
     }
 }

@@ -136,9 +136,18 @@ class CommandJournal {
         throw const FormatException('Corrupt journal; refusing drawer count');
       }
       final id = value['id'] as String;
-      latest[id] = {...?latest[id], ...value};
+      // Reinsert to preserve the most recent append order, including reconciliation.
+      final previous = latest.remove(id);
+      latest[id] = {...?previous, ...value};
     }
     return latest;
+  }
+
+  /// The latest distinct commands, newest first. A follow-up may immediately
+  /// succeed its original in this history only if no other operation intervened.
+  Future<List<Map<String, dynamic>>> latestDeviceCommands(String deviceId) async {
+    final records = (await _latestStrict()).values.toList();
+    return records.reversed.where((row) => row['deviceId'] == deviceId).take(3).toList();
   }
 
   Future<bool> hasUnresolvedDrawerEffects(String deviceId) async {
@@ -196,6 +205,7 @@ class CommandJournal {
     required Map<String, Object?> payload,
     required Future<HardwareResult> Function() dispatch,
     Future<HardwareResult> Function()? reconcile,
+    bool Function(List<Map<String, dynamic>> recent)? acceptsDeviceHistory,
     bool recoveryOnly = false,
   }) async {
     if (id.isEmpty || deviceId.isEmpty || operation.isEmpty) {
@@ -221,6 +231,7 @@ class CommandJournal {
       }
       final source = await file.readAsString();
       Map<String, dynamic>? previous;
+      final deviceHistory = <Map<String, dynamic>>[];
       final provisionalEntries=<String,Map<String,dynamic>>{};
       for (final line in const LineSplitter().convert(source)) {
         final value = jsonDecode(line);
@@ -232,6 +243,11 @@ class CommandJournal {
           );
         }
         if (value['id'] == id) previous = value;
+        if (acceptsDeviceHistory != null && value['deviceId'] == deviceId) {
+          deviceHistory.removeWhere((row) => row['id'] == value['id']);
+          deviceHistory.insert(0, value);
+          if (deviceHistory.length > 3) deviceHistory.removeLast();
+        }
         if(payload['labelLeaseId']!=null && value['labelLeaseId']==payload['labelLeaseId'] &&
           value['deviceId']==deviceId && value['operation']=='productionLabel') {
           provisionalEntries[value['id'] as String]={...?provisionalEntries[value['id']],...Map<String,dynamic>.from(value)};
@@ -283,6 +299,10 @@ class CommandJournal {
               previous['message'] as String? ??
               'Comandă trimisă anterior; necesită verificare',
         );
+      }
+      if (acceptsDeviceHistory != null && !acceptsDeviceHistory(deviceHistory)) {
+        return const HardwareResult(CommandOutcome.rejected,
+            message: 'Jurnalul nu confirmă bonul întrerupt pentru această imprimantă.');
       }
       if (recoveryOnly) {
         return const HardwareResult(CommandOutcome.unknown,
