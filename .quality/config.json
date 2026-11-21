@@ -6,7 +6,7 @@
   "repository": "chimera-companion",
   "authority": "../chimera",
   "runner": "jest",
-  "localGuidance": "Flutter Android hardware bridge; iOS requires physical validation. Keep ECR/Viva procedures in adapters and use the durable executor. Do not retry unknown fiscal/payment outcomes. Preserve device TLS keys, identities and OTA compatibility. Commands: flutter analyze, flutter test <file>, dart run tool/quality.dart. Hardware operations require explicit authorization.",
+  "localGuidance": "Flutter Android hardware bridge; iOS requires physical validation. Keep ECR/Viva procedures in adapters and use the durable executor. Do not retry unknown fiscal/payment outcomes. Preserve device TLS keys, identities and OTA compatibility. Commands: flutter analyze, flutter test <file>, dart run tool/quality.dart. Hardware operations require explicit authorization.\n\n## Agent skills\n\n### Issue tracker\n\nTrack this repository’s tickets and specs in GitHub Issues. See [Issue tracker](docs/agents/issue-tracker.md).\n\n### Triage labels\n\nUse the five project labels. See [Triage labels](docs/agents/triage-labels.md).\n\n### Domain docs\n\nUse one glossary and one ADR directory for this repository. See [Domain docs](docs/agents/domain.md).",
   "documents": {
     "README.md": {
       "classification": "current",
@@ -52,6 +52,21 @@
       "classification": "current",
       "owner": "Chimera interface maintainers",
       "purpose": "Generated copy of canonical ERP UI/UX requirements for standalone clones"
+    },
+    "docs/agents/issue-tracker.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "GitHub issue and specification workflow for this repository"
+    },
+    "docs/agents/triage-labels.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Canonical triage roles and their GitHub label names"
+    },
+    "docs/agents/domain.md": {
+      "classification": "current",
+      "owner": "repository maintainers",
+      "purpose": "Glossary and architecture decision reading conventions"
     }
   },
   "existingTests": [

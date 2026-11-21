@@ -53,3 +53,17 @@ Local hooks can be bypassed. Automated checks validate structure, references and
 ## Repository guidance
 
 Flutter Android hardware bridge; iOS requires physical validation. Keep ECR/Viva procedures in adapters and use the durable executor. Do not retry unknown fiscal/payment outcomes. Preserve device TLS keys, identities and OTA compatibility. Commands: flutter analyze, flutter test <file>, dart run tool/quality.dart. Hardware operations require explicit authorization.
+
+## Agent skills
+
+### Issue tracker
+
+Track this repository’s tickets and specs in GitHub Issues. See [Issue tracker](docs/agents/issue-tracker.md).
+
+### Triage labels
+
+Use the five project labels. See [Triage labels](docs/agents/triage-labels.md).
+
+### Domain docs
+
+Use one glossary and one ADR directory for this repository. See [Domain docs](docs/agents/domain.md).

@@ -93,3 +93,7 @@ PIN and Enterprise URL inputs retain focus and text when Android resizes the
 wide wizard; `test/setup_keyboard_test.dart` reproduces opening and closing the
 keyboard across the wide/compact height threshold. Physical iMin acceptance is
 separate from the widget regression.
+
+## Engineering skills
+
+[Issue tracker](docs/agents/issue-tracker.md) · [Triage labels](docs/agents/triage-labels.md) · [Domain docs](docs/agents/domain.md)
